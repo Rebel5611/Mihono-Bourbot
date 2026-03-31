@@ -1,8 +1,8 @@
 import asyncio
-import nextcord
-from nextcord.ext import commands
-from nextcord import Interaction
-from nextcord import FFmpegPCMAudio
+import discord
+from discord.ext import commands
+from discord import Interaction
+from discord import FFmpegPCMAudio
 from apikeys import guild_ids
 
 class join(commands.Cog):
@@ -10,7 +10,7 @@ class join(commands.Cog):
     def __init__(self, client):
         self.client = client
 
-    @nextcord.slash_command(name= "join", description = "Have Mihono Bourbot join your voice channel", guild_ids= guild_ids)
+    @discord.slash_command(name= "join", description = "Have Mihono Bourbot join your voice channel", guild_ids= guild_ids)
     async def join(self, interaction: Interaction):
         await interaction.response.defer(ephemeral= True) 
         if interaction.user.voice:

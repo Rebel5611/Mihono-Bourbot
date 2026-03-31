@@ -1,9 +1,9 @@
-import nextcord
-from nextcord.ext import commands
+import discord
+from discord.ext import commands
 import os
 from apikeys import *
 
-intents = nextcord.Intents.default()
+intents = discord.Intents.default()
 intents.message_content = True
 
 client = commands.Bot(command_prefix='/', intents=intents)

@@ -5,7 +5,7 @@ import docker
 import enum
 import glob
 import json
-import nextcord
+import discord
 import os
 import requests
 import ssl
@@ -14,8 +14,8 @@ import urllib
 import websockets
 import zipfile
 from apikeys import guild_ids
-from nextcord.ext import commands
-from nextcord import Interaction
+from discord.ext import commands
+from discord import Interaction
 
 class archipelago(commands.Cog):
     def __init__(self, client):
@@ -29,13 +29,13 @@ class archipelago(commands.Cog):
 
         self.load_data()
     
-    @nextcord.slash_command(name= "archipelago", guild_ids= guild_ids)
+    @discord.slash_command(name= "archipelago", guild_ids= guild_ids)
     async def archipelago(self, interaction: Interaction):
         pass
     
     @archipelago.subcommand(name="get_server_address", description = "Get the address to join the Archipelago server")
     async def get_server_address(self, interaction: Interaction):
-        role = nextcord.utils.get(interaction.guild.roles, name="Archipelago")
+        role = discord.utils.get(interaction.guild.roles, name="Archipelago")
         if role in interaction.user.roles:
             ip = requests.get('https://checkip.amazonaws.com').text.strip()
             await interaction.send(f"The address for the Archipelago game is: {ip}:56112", ephemeral=True)
@@ -58,7 +58,7 @@ class archipelago(commands.Cog):
         await interaction.response.send_message(f"Saved '{alias}' as your Archipelago alias", ephemeral=True)
 
     @archipelago.subcommand(name="upload_yamls")
-    async def upload_yamls(self, interaction: Interaction, attachment: nextcord.Attachment):
+    async def upload_yamls(self, interaction: Interaction, attachment: discord.Attachment):
         name, extension = os.path.splitext(attachment.filename)
         if extension.lower() == ".zip":
             files = glob.glob('/server/archipelago/serverdata/Players/*')
@@ -101,7 +101,7 @@ class archipelago(commands.Cog):
         result = self.docker_client.containers.run("archipelago-generate", name="archipelago-generate", remove=True, detach=True, volumes=["/home/rebel5611/mihono_bourbot/serverdata/archipelago/serverdata:/server"]).wait()
         if result['StatusCode'] == 0:
             output_filepath = glob.glob('/server/archipelago/serverdata/output/*')[0]
-            await interaction.followup.send("Multiworld generated", file=nextcord.File(output_filepath))
+            await interaction.followup.send("Multiworld generated", file=discord.File(output_filepath))
             
             with zipfile.ZipFile(output_filepath, 'r') as zip_ref:
                 zip_ref.extractall("/server/archipelago/serverdata/output/")

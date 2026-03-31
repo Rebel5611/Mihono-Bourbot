@@ -1,6 +1,6 @@
-import nextcord
-from nextcord.ext import commands
-from nextcord import Interaction
+import discord
+from discord.ext import commands
+from discord import Interaction
 from apikeys import guild_ids
 
 class leave(commands.Cog):
@@ -8,7 +8,7 @@ class leave(commands.Cog):
     def __init__(self, client):
         self.client = client
 
-    @nextcord.slash_command(name= "leave", description= "Have Mihono Bourbot leave the voice channel", guild_ids= guild_ids)
+    @discord.slash_command(name= "leave", description= "Have Mihono Bourbot leave the voice channel", guild_ids= guild_ids)
     async def leave(self, interaction: Interaction):
         if interaction.guild.voice_client:
             await interaction.guild.voice_client.disconnect()
