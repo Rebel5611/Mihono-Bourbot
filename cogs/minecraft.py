@@ -1,19 +1,16 @@
 import discord
 import requests
 from discord.ext import commands
-from discord import Interaction
+from discord import app_commands, Interaction
 from apikeys import guild_ids
 
-class minecraft(commands.Cog):
+class Minecraft(commands.Cog):
+    minecraft = app_commands.Group(name="minecraft", description="Commands related to Minecraft")
 
     def __init__(self, client):
         self.client = client
 
-    @discord.slash_command(name= "minecraft", guild_ids= guild_ids)
-    async def minecraft(self, interaction: Interaction):
-        pass
-    
-    @minecraft.subcommand(name="get_server_address", description = "Get the address to join the Minecraft server")
+    @minecraft.command(name="get_server_address", description = "Get the address to join the Minecraft server")
     async def get_server_address(self, interaction: Interaction):
         role = discord.utils.get(interaction.guild.roles, name="Minecraft")
         if role in interaction.user.roles:
@@ -22,5 +19,5 @@ class minecraft(commands.Cog):
         else:
             await interaction.send("You do not have access to this server.", ephemeral=True)
 
-def setup(client):
-    client.add_cog(minecraft(client))
+async def setup(client):
+    await client.add_cog(Minecraft(client))

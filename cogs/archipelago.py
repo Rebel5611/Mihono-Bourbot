@@ -1,11 +1,12 @@
 import asyncio
 import bidict
 import certifi
+import database
+import discord
 import docker
 import enum
 import glob
 import json
-import discord
 import os
 import requests
 import ssl
@@ -13,11 +14,14 @@ import typing
 import urllib
 import websockets
 import zipfile
-from apikeys import guild_ids
 from discord.ext import commands
-from discord import Interaction
+from discord import app_commands, Interaction
 
-class archipelago(commands.Cog):
+class Archipelago(commands.Cog):
+    archipelago = app_commands.Group(name="archipelago", description="Commands related to Archipelago")
+    bounty_board = app_commands.Group(name="bounty_board", description="Commands related to the Archipelago bounty board", parent=archipelago)
+    server = app_commands.Group(name="server", description="Commands related to the Archipelago server", parent=archipelago)
+    
     def __init__(self, client):
         self.client = client
         self.bot_data = None
@@ -26,14 +30,10 @@ class archipelago(commands.Cog):
         self.archipelago_server = None
         self.archipelago_socket = None
         self.server_watcher = None
-
+        
         self.load_data()
     
-    @discord.slash_command(name= "archipelago", guild_ids= guild_ids)
-    async def archipelago(self, interaction: Interaction):
-        pass
-    
-    @archipelago.subcommand(name="get_server_address", description = "Get the address to join the Archipelago server")
+    @archipelago.command(name="get_server_address", description = "Get the address to join the Archipelago server")
     async def get_server_address(self, interaction: Interaction):
         role = discord.utils.get(interaction.guild.roles, name="Archipelago")
         if role in interaction.user.roles:
@@ -42,22 +42,24 @@ class archipelago(commands.Cog):
         else:
             await interaction.send("You do not have access to this server.", ephemeral=True)
 
-    @archipelago.subcommand(name="set_reporting_channel", description = "Set the current channel as the Archipelago reporting channel")
+    @archipelago.command(name="set_reporting_channel", description = "Set the current channel as the Archipelago reporting channel")
     async def set_reporting_channel(self, interaction: Interaction):
         if interaction.user.guild_permissions.manage_guild:
-            def funct(): self.bot_data["reporting_channel"] = interaction.channel_id
-            self.change_data(funct)
+            server = database.get_server(interaction.guild.id)
+            server.reporting_channel = interaction.channel_id
+            database.commit()
             await interaction.response.send_message("Saved as reporting channel")
         else:
             await interaction.response.send_message("You do not have permission to run this command!")
     
-    @archipelago.subcommand(name="set_alias")
+    @archipelago.command(name="set_alias")
     async def set_alias(self, interaction: Interaction, alias: str):
-        def funct(): self.bot_data["players"][interaction.user.mention].alias = alias
-        self.change_data(funct)
+        player = database.get_player(interaction.guild.id, interaction.user.id)
+        player.player_alias = alias
+        database.commit()
         await interaction.response.send_message(f"Saved '{alias}' as your Archipelago alias", ephemeral=True)
 
-    @archipelago.subcommand(name="upload_yamls")
+    @archipelago.command(name="upload_yamls")
     async def upload_yamls(self, interaction: Interaction, attachment: discord.Attachment):
         name, extension = os.path.splitext(attachment.filename)
         if extension.lower() == ".zip":
@@ -82,7 +84,7 @@ class archipelago(commands.Cog):
         else:
             await interaction.response.send_message("Invalid file type! Please upload a .zip file or a single .yaml", ephemeral=True)
 
-    @archipelago.subcommand(name="generate_game")
+    @archipelago.command(name="generate_game")
     async def generate_game(self, interaction: Interaction):
         await interaction.response.defer()
         files = glob.glob('/server/archipelago/serverdata/output/*')
@@ -115,11 +117,7 @@ class archipelago(commands.Cog):
         else:
             await interaction.followup.send("Multiworld generation failed")
 
-    @archipelago.subcommand(name= "bounty_board")
-    async def bounty_board(self, interaction: Interaction):
-        pass
-
-    @bounty_board.subcommand(name= "add_bounty")
+    @bounty_board.command(name= "add_bounty")
     async def add_bounty(self, interaction: Interaction, item: str):
         if interaction.user.mention in self.bot_data["players"] and self.bot_data["players"][interaction.user.mention].alias:
             if item in self.bot_data["item_name_to_id"][self.bot_data["players"][interaction.user.mention].game]:
@@ -132,7 +130,7 @@ class archipelago(commands.Cog):
         else:
             await interaction.response.send_message("No player found. Have you run '/archipelago set_alias' yet?", ephemeral=True)
     
-    @bounty_board.subcommand(name= "remove_bounty")
+    @bounty_board.command(name= "remove_bounty")
     async def remove_bounty(self, interaction: Interaction, item: str):
         if interaction.user.mention in self.bot_data["players"] and self.bot_data["players"][interaction.user.mention].alias:
             def funct(): return self.bot_data["players"][interaction.user.mention].bounties.pop(str(self.bot_data["item_name_to_id"][self.bot_data["players"][[interaction.user.mention]].game][item]), None)
@@ -142,7 +140,7 @@ class archipelago(commands.Cog):
                 return
         await interaction.response.send_message(f"No bounty for item '{item}' exists", ephemeral=True)
 
-    @bounty_board.subcommand(name= "get_bounties")
+    @bounty_board.command(name= "get_bounties")
     async def get_bounties(self, interaction: Interaction):
         bounties = ""
         for mention in self.bot_data["players"].keys():
@@ -157,11 +155,7 @@ class archipelago(commands.Cog):
         else:
             await interaction.response.send_message("There are no current bounties!")
 
-    @archipelago.subcommand(name= "server")
-    async def server(self, interaction: Interaction):
-        pass
-
-    @server.subcommand(name="start")
+    @server.command(name="start")
     async def start(self, interaction: Interaction):
         await interaction.response.defer()
         
@@ -184,7 +178,7 @@ class archipelago(commands.Cog):
             #self.server_watcher = asyncio.create_task(self.process_server_output(), name="server watcher")
             await interaction.followup.send("Server started")
             
-    @server.subcommand(name="stop")
+    @server.command(name="stop")
     async def stop(self, interaction: Interaction):
         await interaction.response.defer()
         
@@ -496,5 +490,5 @@ class NetworkItem(typing.NamedTuple):
     player: int
     flags: int = 0
 
-def setup(client):
-    client.add_cog(archipelago(client))
+async def setup(client):
+    await client.add_cog(Archipelago(client))

@@ -1,19 +1,16 @@
 import discord
 import requests
 from discord.ext import commands
-from discord import Interaction
+from discord import app_commands, Interaction
 from apikeys import guild_ids
 
-class terraria(commands.Cog):
+class Terraria(commands.Cog):
+    terraria = app_commands.Group(name="terraria", description="Commands related to Terraria")
 
     def __init__(self, client):
         self.client = client
-
-    @discord.slash_command(name= "terraria", guild_ids= guild_ids)
-    async def terraria(self, interaction: Interaction):
-        pass
     
-    @terraria.subcommand(name="get_server_address", description = "Get the address to join the Terraria server")
+    @terraria.command(name="get_server_address", description = "Get the address to join the Terraria server")
     async def get_server_address(self, interaction: Interaction):
         role = discord.utils.get(interaction.guild.roles, name="Terraria")
         if role in interaction.user.roles:
@@ -22,5 +19,5 @@ class terraria(commands.Cog):
         else:
             await interaction.send("You do not have access to this server.", ephemeral=True)
 
-def setup(client):
-    client.add_cog(terraria(client))
+async def setup(client):
+    await client.add_cog(Terraria(client))

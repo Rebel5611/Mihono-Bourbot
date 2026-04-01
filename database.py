@@ -1,20 +1,19 @@
 from sqlalchemy import *
 from sqlalchemy.orm import *
 
-Base = declarative_base()
+base = declarative_base()
 
-class Server(Base):
+class Server(base):
     __tablename__ = "server"
 
     server_id = Column(Integer, primary_key=True)
     reporting_channel = Column(Integer)
     memes_channel = Column(Integer)
 
-    # relationship to Player
     players = relationship("Player", back_populates="server")
 
 
-class Player(Base):
+class Player(base):
     __tablename__ = "player"
 
     server_id = Column(Integer, ForeignKey("server.server_id"), primary_key=True)
@@ -28,8 +27,20 @@ def get_server(server_id: int):
     if not server:
         server = Server(server_id=server_id)
         session.add(server)
+        session.commit()
     return server
 
-engine = create_engine("sqlite:///bot_data.db", isolation_level="AUTOCOMMIT")
+def get_player(server_id: int, player_id: int):
+    player = session.get(Player, {"server_id": server_id, "player_id": player_id})
+    if not player:
+        player = Player(server=get_server(server_id), player_id=player_id)
+        session.add(player)
+        session.commit()
+    return player
+
+def commit():
+    session.commit()
+
+engine = create_engine("sqlite:///bot_data.db")
 session = Session(engine)
-Base.metadata.create_all(engine)
+base.metadata.create_all(engine)
