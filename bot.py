@@ -25,5 +25,5 @@ async def on_ready():
         except discord.Forbidden:
             print(f"Skipping guild {guild_id} (not in server or missing access)")
     print("Ready")
-
+    
 client.run(BOTTOKEN)

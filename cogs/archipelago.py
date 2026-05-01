@@ -1,19 +1,12 @@
-import asyncio
-import bidict
-import certifi
+from archipelago_instance import ArchipelagoInstance
 import database
 import discord
 import docker
-import enum
 import glob
-import json
 import os
 import requests
-import ssl
-import typing
-import urllib
-import websockets
 import zipfile
+from websockets.protocol import State
 from discord.ext import commands
 from discord import app_commands, Interaction
 
@@ -24,14 +17,9 @@ class Archipelago(commands.Cog):
     
     def __init__(self, client):
         self.client = client
-        self.bot_data = None
-        
         self.docker_client = docker.from_env()
-        self.archipelago_server = None
-        self.archipelago_socket = None
-        self.server_watcher = None
         
-        self.load_data()
+        self.archipelago_instances: dict[int, ArchipelagoInstance] = {}
     
     @archipelago.command(name="get_server_address", description = "Get the address to join the Archipelago server")
     async def get_server_address(self, interaction: Interaction):
@@ -50,16 +38,26 @@ class Archipelago(commands.Cog):
             database.commit()
             await interaction.response.send_message("Saved as reporting channel")
         else:
-            await interaction.response.send_message("You do not have permission to run this command!")
+            await interaction.response.send_message("You do not have permission to run this command!", ephemeral=True)
+            
+    @archipelago.command(name="set_server_password", description = "Sets the password used to log in to the Archipelago server")
+    async def set_reporting_channel(self, interaction: Interaction, archipelago_password: str):
+        if interaction.user.guild_permissions.manage_guild:
+            server = database.get_server(interaction.guild.id)
+            server.archipelago_password = archipelago_password
+            database.commit()
+            await interaction.response.send_message(f"Saved {archipelago_password} as the server's password", ephemeral=True)
+        else:
+            await interaction.response.send_message("You do not have permission to run this command!", ephemeral=True)
     
-    @archipelago.command(name="set_alias")
+    @archipelago.command(name="set_alias", description = "Set your Archipelago alias")
     async def set_alias(self, interaction: Interaction, alias: str):
-        player = database.get_player(interaction.guild.id, interaction.user.id)
-        player.player_alias = alias
+        user = database.get_user(interaction.guild.id, interaction.user.id)
+        user.archipelago_alias = alias
         database.commit()
         await interaction.response.send_message(f"Saved '{alias}' as your Archipelago alias", ephemeral=True)
 
-    @archipelago.command(name="upload_yamls")
+    @archipelago.command(name="upload_yamls", description = "Upload yamls to use for generating a new Archipelago game")
     async def upload_yamls(self, interaction: Interaction, attachment: discord.Attachment):
         name, extension = os.path.splitext(attachment.filename)
         if extension.lower() == ".zip":
@@ -84,7 +82,7 @@ class Archipelago(commands.Cog):
         else:
             await interaction.response.send_message("Invalid file type! Please upload a .zip file or a single .yaml", ephemeral=True)
 
-    @archipelago.command(name="generate_game")
+    @archipelago.command(name="generate_game", description = "Generate a new Archipelago game")
     async def generate_game(self, interaction: Interaction):
         await interaction.response.defer()
         files = glob.glob('/server/archipelago/serverdata/output/*')
@@ -114,54 +112,63 @@ class Archipelago(commands.Cog):
                     os.rename(f, "/server/archipelago/serverdata/output/server.archipelago")
                 else:
                     os.remove(f)
+                    
+            server = database.get_server(interaction.guild.id)
+            server.players.clear()
+            server.games.clear()
+            database.commit()
         else:
             await interaction.followup.send("Multiworld generation failed")
 
-    @bounty_board.command(name= "add_bounty")
-    async def add_bounty(self, interaction: Interaction, item: str):
-        if interaction.user.mention in self.bot_data["players"] and self.bot_data["players"][interaction.user.mention].alias:
-            if item in self.bot_data["item_name_to_id"][self.bot_data["players"][interaction.user.mention].game]:
-                def funct(): self.bot_data["players"][interaction.user.mention].bounties[str(self.bot_data["item_name_to_id"][self.bot_data["players"][[interaction.user.mention]].game][item])] = item
-                self.change_data(funct)
-                await interaction.response.send_message(f"Bounty added for {interaction.user.mention}'s {item}!")
+    @bounty_board.command(name= "add_bounty", description = "Add a bounty for one of your Archipelago items")
+    async def add_bounty(self, interaction: Interaction, item_name: str):
+        user = database.get_user(interaction.guild.id, interaction.user.id)
+        if player := database.get_player_by_user(user):
+            if item := database.get_item_by_name(player, item_name):
+                if not database.get_bounty(player, item):
+                    database.create_bounty(player, item)
+                    database.commit()
+                    await interaction.response.send_message(f"Bounty added for {interaction.user.mention}'s {item_name}!")
+                else:
+                    await interaction.response.send_message(f"Bounty already exists for your {item_name}", ephemeral=True)
             else:
-                await interaction.response.send_message(f"No such item '{item}' exists in your game.\n"
+                await interaction.response.send_message(f"No such item '{item_name}' exists in your game.\n"
                                                     "The item name may be different in the randomizer.", ephemeral=True)
         else:
-            await interaction.response.send_message("No player found. Have you run '/archipelago set_alias' yet?", ephemeral=True)
+            await interaction.response.send_message("No player found. Either your alias is incorrect, or I haven't connected to the server", ephemeral=True)
     
-    @bounty_board.command(name= "remove_bounty")
-    async def remove_bounty(self, interaction: Interaction, item: str):
-        if interaction.user.mention in self.bot_data["players"] and self.bot_data["players"][interaction.user.mention].alias:
-            def funct(): return self.bot_data["players"][interaction.user.mention].bounties.pop(str(self.bot_data["item_name_to_id"][self.bot_data["players"][[interaction.user.mention]].game][item]), None)
-            removed_bounty = self.change_data(funct)
-            if removed_bounty is not None:
-                await interaction.response.send_message(f"Bounty for {interaction.user.mention}'s {item} removed!")
-                return
-        await interaction.response.send_message(f"No bounty for item '{item}' exists", ephemeral=True)
+    @bounty_board.command(name= "remove_bounty", description = "Remove one of your Archipelago bounties")
+    async def remove_bounty(self, interaction: Interaction, item_name: str):
+        user = database.get_user(interaction.guild.id, interaction.user.id)
+        if (player := database.get_player_by_user(user)) and (item := database.get_item_by_name(player, item_name)) and (bounty := database.get_bounty(player, item)):
+            player.bounties.remove(bounty)
+            database.commit()
+            await interaction.response.send_message(f"Bounty for {interaction.user.mention}'s {item_name} removed!")
+            return
+        await interaction.response.send_message(f"No bounty for item '{item_name}' exists", ephemeral=True)
 
-    @bounty_board.command(name= "get_bounties")
+    @bounty_board.command(name= "get_bounties", description = "Get the current Archipelago bounties")
     async def get_bounties(self, interaction: Interaction):
-        bounties = ""
-        for mention in self.bot_data["players"].keys():
-            player = self.bot_data["players"][mention]
-            if len(player.bounties) > 0:
-                bounties += f"{mention}:\n"
-                for bounty in player.bounties.values():
-                    bounties += f"\t{bounty}\n"
+        server = database.get_server(interaction.guild.id)
+        player_tuples = [(user, player) for user in server.users if (player := database.get_player_by_user(user))]
+        for player_tuple in player_tuples:
+            if len(player_tuple[1].bounties) > 0:
+                bounties += f"{player_tuple[0].user_id}:\n"
+                for bounty in player_tuple[1].bounties:
+                    bounties += f"\t{bounty.item.item_name}\n"
         bounties = bounties.strip()
         if bounties != '':
             await interaction.response.send_message(f"The current bounties are:\n{bounties}")
         else:
             await interaction.response.send_message("There are no current bounties!")
 
-    @server.command(name="start")
+    @server.command(name="start", description = "Start the Archipelago server")
     async def start(self, interaction: Interaction):
         await interaction.response.defer()
         
         if len(glob.glob('/server/archipelago/serverdata/output/*')) == 0:
             await interaction.followup.send("No game found. Upload your yamls with /archipelago upload_yamls and then generate one with /archipelago generate_game")
-        elif self.check_server_status():
+        elif interaction.guild.id in self.archipelago_instances.keys() and self.archipelago_instances[interaction.guild.id].check_server_status():
             await interaction.followup.send("A server is already running. Please stop it first with /archipelago server stop")
         else:
             try:
@@ -173,322 +180,29 @@ class Archipelago(commands.Cog):
                 print(f"An unexpected error occurred: {e}")
             
             self.docker_client.images.build(path="/server/archipelago/", dockerfile="Run", tag="archipelago-run", rm=True)
-            self.archipelago_server = self.docker_client.containers.run("archipelago-run", name="archipelago-run", stdin_open=True, tty=True, remove=True, detach=True, ports={'38281/tcp': 56112}, volumes=["/home/rebel5611/mihono_bourbot/serverdata/archipelago/serverdata:/server"])
-            self.archipelago_socket = self.archipelago_server.attach_socket(params={"stdin": 1, "stdout": 1, "stderr": 1, "stream": 1})
-            #self.server_watcher = asyncio.create_task(self.process_server_output(), name="server watcher")
+            self.archipelago_instances[interaction.guild.id] = ArchipelagoInstance(server_id=interaction.guild.id, discord_client=self.client, docker_client=self.docker_client)
+            self.archipelago_instances[interaction.guild.id].start_server()
             await interaction.followup.send("Server started")
             
-    @server.command(name="stop")
+    @server.command(name="stop", description = "Stop the Archipelago server")
     async def stop(self, interaction: Interaction):
         await interaction.response.defer()
         
-        if not self.check_server_status():
+        instance = self.archipelago_instances[interaction.guild.id]
+        if not instance or not instance.check_server_status():
             await interaction.followup.send("There is no running server")
         else:
-            self.archipelago_server.stop()
-            await interaction.followup.send("Server stopped")
-      
-    def check_server_status(self):
-        if self.archipelago_server != None:
-            try:
-                self.archipelago_server.reload()
-            except:
-                self.archipelago_server = None
-        
-        return self.archipelago_server != None and self.archipelago_server.attrs["State"]["Status"] in ["created", "running"]
-          
-    #async def process_server_output(self):
-        
-
-    async def process_server_cmd(self, args: dict):
-        try:
-            cmd = args["cmd"]
-        except:
-            print(f"Could not get command from {args}")
-            raise
-        if cmd == 'RoomInfo':
-            payload = {
-                'cmd': 'Connect',
-                'password': str(self.bot_data["password"]), 
-                'name': str(self.bot_data["username"]), 
-                'version': self.tuplize_version("0.5.0"),
-                'tags': {"AP", "TextOnly"}, 
-                'items_handling': 0b111,
-                'uuid': self.bot_data["uuid"], 
-                'game': "", 
-                "slot_data": False,
-            }
-            if args['password']:
-                payload.update(args['password'])
-
-            await self.socket.send(self.encode([{"cmd": "GetDataPackage", "games": [game]} for game in set(args["games"])]))
-
-            if not self.socket or not self.socket.open or self.socket.closed:
-                return
-            await self.socket.send(self.encode([payload]))
-        
-        elif cmd == 'DataPackage':
-            def funct():
-                for game, game_data in args['data']["games"].items():
-                    self.bot_data["item_name_to_id"][game] = game_data["item_name_to_id"]
-                    self.bot_data["location_name_to_id"][game] = game_data["location_name_to_id"]
-            self.change_data(funct)
-
-        elif cmd == 'ConnectionRefused':
-            errors = args["errors"]
-            if 'InvalidSlot' in errors:
-                self.disconnected_intentionally = True
-                await self.send_message("Invalid username")
-                raise Exception('Invalid username')
-            elif 'IncompatibleVersion' in errors:
-                raise Exception('Server reported your client version as incompatible. '
-                                'This probably means you have to update.')
-            elif 'InvalidItemsHandling' in errors:
-                raise Exception('The item handling flags requested by the client are not supported')
-            elif 'InvalidPassword' in errors:
-                self.disconnected_intentionally = True
-                await self.send_message("Invalid password")
-                def funct(): self.bot_data["password"] = ""
-                self.change_data(funct)
-                raise Exception('Invalid password')
-            elif errors:
-                raise Exception(f"Unknown connection errors: {str(errors)}")
-            else:
-                raise Exception('Connection refused by the multiworld host, no reason provided')
-
-        elif cmd == 'Connected':
-            await self.send_message("Connected to multiworld server")
-            for player in args["players"]:
-                def funct():
-                    if str(player.slot) not in self.bot_data["players"]:
-                        self.bot_data["players"][str(player.slot)] = Player(slot=player.slot,
-                                                                    alias=player.alias,
-                                                                    name=player.name,
-                                                                    game=args["slot_info"][str(player.slot)].game,
-                                                                    team=player.team)
-                    else:
-                        self.bot_data["players"][str(player.slot)] = Player(slot=player.slot,
-                                                                    alias=player.alias,
-                                                                    name=player.name,
-                                                                    game=args["slot_info"][str(player.slot)].game,
-                                                                    team=player.team,
-                                                                    mention=self.bot_data["players"][str(player.slot)].mention,
-                                                                    recieved_items=self.bot_data["players"][str(player.slot)].recieved_items,
-                                                                    bounties=self.bot_data["players"][str(player.slot)].bounties)
-                self.change_data(funct)
-            def funct(): self.bot_data["hint_cost"] = args["hint_points"]
-            self.change_data(funct)
+            instance.disconnected_intentionally = True
+            if instance.autoreconnect_task:
+                instance.autoreconnect_task.cancel()
+                instance.autoreconnect_task = None
+            if instance.socket and instance.socket.state is not State.CLOSED:
+                await instance.socket.close()
+            if instance.archipelago_client:
+                await instance.archipelago_client
                 
-        elif cmd == 'ReceivedItems':
-            recieved_items = {}
-            for network_item in args["items"]:
-                if str(network_item.player) not in recieved_items:
-                    recieved_items[str(network_item.player)] = {}
-                recieved_items[str(network_item.player)][str(network_item.location)] = str(network_item.item)
-            for player in recieved_items:
-                for location in self.bot_data["players"][player].recieved_items:
-                    recieved_items[player].pop(location, None)
-                def funct(): self.bot_data["players"][player].recieved_items.update(recieved_items[player])
-                self.change_data(funct)
-                for location in recieved_items[player]:
-                    bounty_found = None
-                    bounty_user = None
-                    for user in self.bot_data["players"]:
-                        if bounty_found == None:
-                            def funct(): return self.bot_data["players"][user].bounties.pop(recieved_items[player][location], None)
-                            bounty_found = self.change_data(funct)
-                            if bounty_found != None:
-                                bounty_user = self.bot_data["players"][user].mention
-                    if bounty_found is not None:
-                        await self.send_message(f"{self.bot_data['players'][player].mention} has found {bounty_user}'s {bounty_found} at their " +
-                                                f"{bidict.bidict(self.bot_data['location_name_to_id'][self.bot_data['players'][player].game]).inverse[int(location)]}!")
-
-        elif cmd == "RoomUpdate":
-            print(args)
-            if "hint_points" in args:
-                def funct(): self.bot_data["hint_cost"] = args["hint_points"]
-                self.change_data(funct)
-
-        elif cmd == 'InvalidPacket':
-            print(f"Invalid Packet of {args['type']}: {args['text']}")
-
-    async def server_autoreconnect(self):
-        await asyncio.sleep(self.reconnect_delay)
-        if self.bot_data["address"] and self.multiworld_connection is None:
-            self.multiworld_connection = asyncio.create_task(self.connect_to_multiworld(self.bot_data["address"]), name="server loop")
-
-    async def send_message(self, msg: str):
-        await self.client.get_channel(self.bot_data["reporting_channel"]).send(msg)
-
-    def change_data(self, funct):
-        self.load_data()
-        ret = funct()
-        self.save_data()
-        return ret
-
-    def save_data(self):
-        with open("bot_data.json", "w") as f:
-            json.dump(self.bot_data, f, indent=2, cls=Player.Encoder)
-
-    def load_data(self):
-        if not os.path.isfile("bot_data.json"):
-            with open("bot_data.json", "w") as f:
-                json.dump(dict({}), f)
-
-        with open("bot_data.json", "r") as f:
-            self.bot_data = json.load(f, cls=Player.Decoder)
-        if "reporting_channel" not in self.bot_data:
-            self.bot_data["reporting_channel"] = ''
-        if "world_save" not in self.bot_data:
-            self.bot_data["world_save"] = ''
-        if "address" not in self.bot_data:
-            self.bot_data["address"] = ''
-        if "password" not in self.bot_data:
-            self.bot_data["password"] = ''
-        if "username" not in self.bot_data:
-            self.bot_data["username"] = ''
-        if "hint_cost" not in self.bot_data:
-            self.bot_data["hint_cost"] = None
-        if "uuid" not in self.bot_data:
-            import uuid
-            self.bot_data["uuid"] = uuid.getnode()
-            self.save_data()
-        if "players" not in self.bot_data:
-            self.bot_data["players"] = {}
-        if "item_name_to_id" not in self.bot_data:
-            self.bot_data["item_name_to_id"] = {}
-        if "location_name_to_id" not in self.bot_data:
-            self.bot_data["location_name_to_id"] = {}
-
-    def _object_hook(self, o: typing.Any) -> typing.Any:
-        if isinstance(o, dict):
-            hook = self.custom_hooks.get(o.get("class", None), None)
-            if hook:
-                return hook(o)
-            cls = self.allowlist.get(o.get("class", None), None)
-            if cls:
-                for key in tuple(o):
-                    if key not in cls._fields:
-                        del (o[key])
-                return cls(**o)
-
-        return o
-    
-    class Version(typing.NamedTuple):
-        major: int
-        minor: int
-        build: int
-
-    def get_any_version(self, data: dict) -> Version:
-        data = {key.lower(): value for key, value in data.items()}  # .NET version classes have capitalized keys
-        return self.Version(int(data["major"]), int(data["minor"]), int(data["build"]))
-    
-    def encode(self, obj: typing.Any) -> str:
-        return self._encode(self._scan_for_TypedTuples(obj))
-    
-    def _scan_for_TypedTuples(self, obj: typing.Any) -> typing.Any:
-        if isinstance(obj, tuple) and hasattr(obj, "_fields"):  # NamedTuple is not actually a parent class
-            data = obj._asdict()
-            data["class"] = obj.__class__.__name__
-            return data
-        if isinstance(obj, (tuple, list, set, frozenset)):
-            return tuple(self._scan_for_TypedTuples(o) for o in obj)
-        if isinstance(obj, dict):
-            return {key: self._scan_for_TypedTuples(value) for key, value in obj.items()}
-        return obj
-    
-    def tuplize_version(self, version: str) -> Version:
-        return self.Version(*(int(piece, 10) for piece in version.split(".")))
-    
-class Player():
-    """Represents a player in the game."""
-    slot: int
-    alias: str
-    name: str
-    game: str
-    team: int
-    mention: str
-    recieved_items: dict
-    bounties: dict
-    def __init__(self, slot: int, alias: str, name: str, game: str, team: int,
-                 mention: str = None, recieved_items: dict = {}, bounties: dict = {}):
-        self.slot = slot
-        self.alias = alias
-        self.name = name
-        self.game = game
-        self.team = team
-        self.mention = alias if mention is None else mention
-        self.recieved_items = recieved_items
-        self.bounties = bounties
-
-    class Encoder(json.JSONEncoder):
-        def default(self, o):
-            if isinstance(o, Player):
-                return {
-                    "_type": "Player",
-                    "slot": o.slot,
-                    "alias": o.alias,
-                    "name": o.name,
-                    "game": o.game,
-                    "team": o.team,
-                    "mention": o.mention,
-                    "recieved_items": o.recieved_items,
-                    "bounties": o.bounties
-                }
-            return super(Player.Encoder, self).default(o)
-    
-    class Decoder(json.JSONDecoder):
-        def __init__(self, *args, **kwargs):
-            json.JSONDecoder.__init__(self, object_hook=self.object_hook, *args, **kwargs)
-
-        def object_hook(self, o):
-            if "_type" in o:
-                if o["_type"] == "Player":
-                    return Player(slot=o["slot"], alias=o["alias"], name=o["name"], game=o["game"], team=o["team"], mention=o["mention"], recieved_items=o["recieved_items"], bounties=o["bounties"])
-            return o
-            
-            
-        
-
-class ByValue:
-    """
-    Mixin for enums to pickle value instead of name (restores pre-3.11 behavior). Use as left-most parent.
-    See https://github.com/python/cpython/pull/26658 for why this exists.
-    """
-    def __reduce_ex__(self, prot):
-        return self.__class__, (self._value_, )
-    
-class SlotType(ByValue, enum.IntFlag):
-    spectator = 0b00
-    player = 0b01
-    group = 0b10
-
-    @property
-    def always_goal(self) -> bool:
-        """Mark this slot as having reached its goal instantly."""
-        return self.value != 0b01
-    
-class NetworkPlayer(typing.NamedTuple):
-    """Represents a particular player on a particular team."""
-    team: int
-    slot: int
-    alias: str
-    name: str
-
-
-class NetworkSlot(typing.NamedTuple):
-    """Represents a particular slot across teams."""
-    name: str
-    game: str
-    type: SlotType
-    group_members: typing.Union[typing.List[int], typing.Tuple] = ()  # only populated if type == group
-
-
-class NetworkItem(typing.NamedTuple):
-    item: int
-    location: int
-    player: int
-    flags: int = 0
+            instance.server.stop()
+            await interaction.followup.send("Server stopped")
 
 async def setup(client):
     await client.add_cog(Archipelago(client))
