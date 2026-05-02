@@ -112,6 +112,7 @@ class ArchipelagoInstance():
         except:
             print(f"Could not get command from {args}")
             raise
+
         if cmd == 'RoomInfo':
             payload = {
                 'cmd': 'Connect',
@@ -135,7 +136,7 @@ class ArchipelagoInstance():
         
         elif cmd == 'DataPackage':
             for game, game_data in args['data']["games"].items():
-                database.set_game_items(self.server_id, game, game_data["item_name_to_id"])
+                database.set_game_items_and_locations(self.server_id, game, game_data["item_name_to_id"], game_data["location_name_to_id"])
 
         elif cmd == 'ConnectionRefused':
             errors = args["errors"]
@@ -161,35 +162,27 @@ class ArchipelagoInstance():
             await self.send_message("Connected to multiworld server")
             for player in args["players"]:
                 if not database.get_player(self.server_id, player.slot):
-                    database.create_player(self.server_id, player.slot, player.alias)
+                    database.create_player(self.server_id, player.slot, player.alias, args['slot_info'].get(str(player.slot)).game)
                 
-        elif cmd == 'ReceivedItems':
-            print(args)
-            recieved_items = {}
-            for network_item in args["items"]:
-                if str(network_item.player) not in recieved_items:
-                    recieved_items[str(network_item.player)] = {}
-                recieved_items[str(network_item.player)][str(network_item.location)] = str(network_item.item)
-            for player in recieved_items:
-                saved_player = database.get_player(self.server_id, player)
-                saved_player.recieved_items.clear()
-                
-                for location in player:
-                    database.create_recieved_item(self.server_id, player, location, recieved_items[player][location])
+        elif cmd == 'PrintJSON':
+            if 'type' in args.keys() and args['type'] == 'ItemSend':
+                receiving_player = database.get_player(self.server_id, int(args['receiving']))
+                item = database.get_item(self.server_id, int(args['item'].item))
+                location = database.get_location(self.server_id, int(args['item'].location))
+                database.create_recieved_item(self.server_id, receiving_player.slot, item.item_id, location.location_id)
                 database.commit()
                 
-                for location in recieved_items[player]:
-                    bounty_found = None
-                    bounty_user = None
-                    for user in self.bot_data["players"]:
-                        if bounty_found == None:
-                            def funct(): return self.bot_data["players"][user].bounties.pop(recieved_items[player][location], None)
-                            bounty_found = self.change_data(funct)
-                            if bounty_found != None:
-                                bounty_user = self.bot_data["players"][user].mention
-                    if bounty_found is not None:
-                        await self.send_message(f"{self.bot_data['players'][player].mention} has found {bounty_user}'s {bounty_found} at their " +
-                                                f"{bidict.bidict(self.bot_data['location_name_to_id'][self.bot_data['players'][player].game]).inverse[int(location)]}!")
+                if len(item.bounties) > 0:
+                    bounty = item.bounties[0]
+                    receiving_user = database.get_user_by_player(receiving_player)
+                    finding_player = database.get_player(self.server_id, int(args['item'].player))
+                    finding_user = database.get_user_by_player(finding_player)
+
+                    finder = f"<@{finding_user.user_id}>" if finding_user else finding_player.archipelago_alias
+                    receiver = f"<@{receiving_user.user_id}>" if finding_user else receiving_player.archipelago_alias
+                    await self.send_message(f"{finder} has found {receiver}'s {bounty.item.item_name} at their {location.location_name}!")
+                    item.bounties.remove(bounty)
+                    database.commit()
 
         elif cmd == 'InvalidPacket':
             print(f"Invalid Packet of {args['type']}: {args['text']}")
@@ -200,7 +193,8 @@ class ArchipelagoInstance():
             self.archipelago_client = asyncio.create_task(self.connect_to_multiworld("ws://archipelago-run:38281"), name="server loop")
 
     async def send_message(self, msg: str):
-        await self.discord_client.get_channel(database.get_server(self.server_id).reporting_channel).send(msg)
+        if reporting_channel := database.get_server(self.server_id).reporting_channel:
+            await self.discord_client.get_channel(reporting_channel).send(msg)
         
     def _object_hook(self, o: typing.Any) -> typing.Any:
         if isinstance(o, dict):

@@ -26,9 +26,9 @@ class Archipelago(commands.Cog):
         role = discord.utils.get(interaction.guild.roles, name="Archipelago")
         if role in interaction.user.roles:
             ip = requests.get('https://checkip.amazonaws.com').text.strip()
-            await interaction.send(f"The address for the Archipelago game is: {ip}:56112", ephemeral=True)
+            await interaction.response.send_message(f"The address for the Archipelago game is: {ip}:56112", ephemeral=True)
         else:
-            await interaction.send("You do not have access to this server.", ephemeral=True)
+            await interaction.response.send_message("You do not have access to this server.", ephemeral=True)
 
     @archipelago.command(name="set_reporting_channel", description = "Set the current channel as the Archipelago reporting channel")
     async def set_reporting_channel(self, interaction: Interaction):
@@ -41,7 +41,7 @@ class Archipelago(commands.Cog):
             await interaction.response.send_message("You do not have permission to run this command!", ephemeral=True)
             
     @archipelago.command(name="set_server_password", description = "Sets the password used to log in to the Archipelago server")
-    async def set_reporting_channel(self, interaction: Interaction, archipelago_password: str):
+    async def set_server_password(self, interaction: Interaction, archipelago_password: str):
         if interaction.user.guild_permissions.manage_guild:
             server = database.get_server(interaction.guild.id)
             server.archipelago_password = archipelago_password
@@ -123,9 +123,9 @@ class Archipelago(commands.Cog):
     @bounty_board.command(name= "add_bounty", description = "Add a bounty for one of your Archipelago items")
     async def add_bounty(self, interaction: Interaction, item_name: str):
         user = database.get_user(interaction.guild.id, interaction.user.id)
-        if player := database.get_player_by_user(user):
-            if item := database.get_item_by_name(player, item_name):
-                if not database.get_bounty(player, item):
+        if (player := database.get_player_by_user(user)) is not None:
+            if (item := database.get_item_by_name(player, item_name)) is not None:
+                if database.get_bounty(player, item) is None:
                     database.create_bounty(player, item)
                     database.commit()
                     await interaction.response.send_message(f"Bounty added for {interaction.user.mention}'s {item_name}!")
@@ -150,10 +150,11 @@ class Archipelago(commands.Cog):
     @bounty_board.command(name= "get_bounties", description = "Get the current Archipelago bounties")
     async def get_bounties(self, interaction: Interaction):
         server = database.get_server(interaction.guild.id)
-        player_tuples = [(user, player) for user in server.users if (player := database.get_player_by_user(user))]
+        bounties = ""
+        player_tuples = [(user, player) for user in server.users if (player := database.get_player_by_user(user)) is not None]
         for player_tuple in player_tuples:
             if len(player_tuple[1].bounties) > 0:
-                bounties += f"{player_tuple[0].user_id}:\n"
+                bounties += f"<@{player_tuple[0].user_id}>:\n"
                 for bounty in player_tuple[1].bounties:
                     bounties += f"\t{bounty.item.item_name}\n"
         bounties = bounties.strip()

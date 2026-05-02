@@ -30,21 +30,12 @@ class User(base):
 
     server: Mapped["Server"] = relationship("Server", foreign_keys=[server_id], back_populates="users")
     
-player_games = Table(
-    "player_games",
-    base.metadata,
-    Column("server_id", Integer, primary_key=True),
-    Column("slot", Integer, primary_key=True),
-    Column("game_name", String, primary_key=True),
-    ForeignKeyConstraint(["server_id", "slot"], ["player.server_id", "player.slot"], ondelete="CASCADE"),
-    ForeignKeyConstraint(["server_id", "game_name"], ["game.server_id", "game.game_name"], ondelete="CASCADE")
-)
-    
 class Player(base):
     __tablename__ = "player"
     
     server_id: Mapped[int] = mapped_column(Integer, primary_key=True)
     slot: Mapped[int] = mapped_column(Integer, primary_key=True)
+    game_name: Mapped[str] = mapped_column(String)
     archipelago_alias: Mapped[str] = mapped_column(String)
     
     __table_args__ = (
@@ -52,23 +43,8 @@ class Player(base):
     )
     
     server: Mapped["Server"] = relationship("Server", foreign_keys=[server_id], back_populates="players")
-    games: Mapped[list["Game"]] = relationship("Game", secondary=player_games, back_populates="players")
     recieved_items: Mapped[list["ReceivedItem"]] = relationship("ReceivedItem", back_populates="player", cascade="all, delete-orphan")
     bounties: Mapped[list["Bounty"]] = relationship("Bounty", back_populates="player", cascade="all, delete-orphan")
-    
-class ReceivedItem(base):
-    __tablename__ = "recieved_item"
-    
-    server_id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    slot: Mapped[int] = mapped_column(Integer, primary_key=True)
-    location: Mapped[int] = mapped_column(Integer, primary_key=True)
-    item: Mapped[int] = mapped_column(Integer)
-    
-    __table_args__ = (
-        ForeignKeyConstraint(["server_id", "slot"], ["player.server_id", "player.slot"], ondelete="CASCADE"),
-    )
-    
-    player: Mapped["Player"] = relationship("Player", foreign_keys=[server_id, slot], back_populates="recieved_items")
     
 class Game(base):
     __tablename__ = "game"
@@ -81,15 +57,15 @@ class Game(base):
     )
     
     server: Mapped["Server"] = relationship("Server", foreign_keys=[server_id], back_populates="games")
-    players: Mapped[list["Player"]] = relationship("Player", secondary=player_games, back_populates="games")
-    items: Mapped[list["GameItem"]] = relationship("GameItem", back_populates="game", cascade="all, delete-orphan")
+    items: Mapped[list["Item"]] = relationship("Item", back_populates="game", cascade="all, delete-orphan")
+    locations: Mapped[list["Location"]] = relationship("Location", back_populates="game", cascade="all, delete-orphan")
 
-class GameItem(base):
-    __tablename__ = "game_item"
+class Item(base):
+    __tablename__ = "item"
 
     server_id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    game_name: Mapped[str] = mapped_column(String, primary_key=True)
     item_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    game_name: Mapped[str] = mapped_column(String)
     item_name: Mapped[str] = mapped_column(String)
     
     __table_args__ = (
@@ -97,23 +73,57 @@ class GameItem(base):
     )
     
     game: Mapped["Game"] = relationship("Game", foreign_keys=[server_id, game_name], back_populates="items")
-    bounties: Mapped[list["Bounty"]] = relationship("Bounty", back_populates="item", cascade="all, delete-orphan", overlaps="bounties")
+    bounties: Mapped[list["Bounty"]] = relationship("Bounty", back_populates="item", viewonly=True)
+    recieved_items: Mapped[list["ReceivedItem"]] = relationship("ReceivedItem", back_populates="item", viewonly=True)
+    
+
+class Location(base):
+    __tablename__ = "location"
+
+    server_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    location_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    game_name: Mapped[str] = mapped_column(String)
+    location_name: Mapped[str] = mapped_column(String)
+    
+    __table_args__ = (
+        ForeignKeyConstraint(["server_id", "game_name"], ["game.server_id", "game.game_name"], ondelete="CASCADE"),
+    )
+    
+    game: Mapped["Game"] = relationship("Game", foreign_keys=[server_id, game_name], back_populates="locations")
+    recieved_items: Mapped[list["ReceivedItem"]] = relationship("ReceivedItem", back_populates="location", viewonly=True)
+
+class ReceivedItem(base):
+    __tablename__ = "recieved_item"
+    
+    server_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    slot: Mapped[int] = mapped_column(Integer, primary_key=True)
+    location_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    item_id: Mapped[int] = mapped_column(Integer)
+    
+    __table_args__ = (
+        ForeignKeyConstraint(["server_id", "slot"], ["player.server_id", "player.slot"], ondelete="CASCADE"),
+        ForeignKeyConstraint(["server_id", "item_id"], ["item.server_id", "item.item_id"], ondelete="CASCADE"),
+        ForeignKeyConstraint(["server_id", "location_id"], ["location.server_id", "location.location_id"], ondelete="CASCADE")
+    )
+    
+    player: Mapped["Player"] = relationship("Player", foreign_keys=[server_id, slot], back_populates="recieved_items")
+    item: Mapped["Item"] = relationship("Item", foreign_keys=[server_id, item_id], back_populates="recieved_items", viewonly=True)
+    location: Mapped["Location"] = relationship("Location", foreign_keys=[server_id, location_id], back_populates="recieved_items", viewonly=True)
 
 class Bounty(base):
     __tablename__ = "bounty"
 
     server_id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    slot: Mapped[int] = mapped_column(Integer)
-    game_name: Mapped[str] = mapped_column(String, primary_key=True)
+    slot: Mapped[int] = mapped_column(Integer, primary_key=True)
     item_id: Mapped[int] = mapped_column(Integer, primary_key=True)
     
     __table_args__ = (
         ForeignKeyConstraint(["server_id", "slot"], ["player.server_id", "player.slot"], ondelete="CASCADE"),
-        ForeignKeyConstraint(["server_id", "game_name", "item_id"], ["game_item.server_id", "game_item.game_name", "game_item.item_id"], ondelete="CASCADE")
+        ForeignKeyConstraint(["server_id", "item_id"], ["item.server_id", "item.item_id"], ondelete="CASCADE")
     )
     
     player: Mapped["Player"] = relationship("Player", foreign_keys=[server_id, slot], back_populates="bounties", overlaps="bounties")
-    item: Mapped["GameItem"] = relationship("GameItem", foreign_keys=[server_id, game_name, item_id], back_populates="bounties", overlaps="player,bounties")
+    item: Mapped["Item"] = relationship("Item", foreign_keys=[server_id, item_id], back_populates="bounties", overlaps="player,bounties")
 
 def get_server(server_id: int) -> Server:
     server = session.get(Server, server_id)
@@ -135,50 +145,71 @@ def get_player_by_user(user: User) -> Player:
     for player in user.server.players:
         if player.archipelago_alias == user.archipelago_alias:
             return player
+    return None
+        
+def get_user_by_player(player: Player) -> User:
+    for user in player.server.users:
+        if user.archipelago_alias == player.archipelago_alias:
+            return user
+    return None
 
-def create_player(server_id: int, slot: int, archipelago_alias: str):
-    player = Player(server_id=server_id, slot=slot, archipelago_alias=archipelago_alias)
+def create_player(server_id: int, slot: int, archipelago_alias: str, game_name: str):
+    player = Player(server_id=server_id, slot=slot, archipelago_alias=archipelago_alias, game_name=game_name)
     session.add(player)
     session.commit()
 
 def get_player(server_id: int, slot: int) -> Player:
     return session.get(Player, {"server_id": server_id, "slot": slot})
 
-def create_recieved_item(server_id: int, slot: int, location: int, item: int):
-    recieved_item = ReceivedItem(server_id=server_id, slot=slot, location=location, item=item)
+def create_recieved_item(server_id: int, slot: int, item_id: int, location_id: int):
+    recieved_item = ReceivedItem(server_id=server_id, slot=slot, item_id=item_id, location_id=location_id)
     session.add(recieved_item)
     session.commit()
     
-def has_recieved_item(server_id: int, slot: int, location: int) -> bool:
-    if session.get(ReceivedItem, {"server_id": server_id, "slot": slot, "location": location}):
+def has_recieved_item(server_id: int, slot: int, location_id: int) -> bool:
+    if session.get(ReceivedItem, {"server_id": server_id, "slot": slot, "location_id": location_id}):
         return True
     return False
 
-def get_item_by_name(player: Player, item_name: str) -> GameItem:
-    for game in player.games:
+def get_item(server_id: int, item_id: int) -> Item:
+    return session.get(Item, {"server_id": server_id, "item_id": item_id})
+
+def get_location(server_id: int, location_id: int) -> Location:
+    return session.get(Location, {"server_id": server_id, "location_id": location_id})
+
+def get_item_by_name(player: Player, item_name: str) -> Item:
+    if (game := session.get(Game, {"server_id": player.server_id, "game_name": player.game_name})) is not None:
         for item in game.items:
             if item.item_name == item_name:
                 return item
     return None
 
-def create_bounty(player: Player, item: GameItem):
-    bounty = Bounty(server_id=player.server_id, slot=player.slot, game_name=item.game_name, item_id=item.item_id)
+def create_bounty(player: Player, item: Item):
+    bounty = Bounty(server_id=player.server_id, slot=player.slot, item_id=item.item_id)
     session.add(bounty)
     session.commit()
     
-def get_bounty(player: Player, item: GameItem) -> Bounty:
-    return session.get(Bounty, {"server_id": player.server_id, "slot": player.slot, "game_name": item.game_name, "item_id": item.item_id})
+def get_bounty(player: Player, item: Item) -> Bounty:
+    return session.get(Bounty, {"server_id": player.server_id, "slot": player.slot, "item_id": item.item_id})
 
-def set_game_items(server_id: int, game_name: str, items: dict[str, int]):
+def set_game_items_and_locations(server_id: int, game_name: str, items: dict[str, int], locations: dict[str, int]):
     game = session.get(Game, {"server_id": server_id, "game_name": game_name})
     if not game:
+        server = session.get(Server, {"server_id": server_id})
         game = Game(server_id=server_id, game_name=game_name)
-        session.add(game)
+        server.games.append(game)
+        session.commit()
+
     game.items.clear()
+    game.locations.clear()
     
     for name, id in items.items():
-        item = GameItem(server_id=game.server_id, game_name=game.game_name, item_id=id, item_name=name)
+        item = Item(server_id=game.server_id, game_name=game.game_name, item_id=id, item_name=name)
         game.items.append(item)
+
+    for name, id in locations.items():
+        location = Location(server_id=game.server_id, game_name=game.game_name, location_id=id, location_name=name)
+        game.locations.append(location)
     session.commit()
         
 def commit():
