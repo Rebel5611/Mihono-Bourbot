@@ -43,7 +43,7 @@ class Player(base):
     )
     
     server: Mapped["Server"] = relationship("Server", foreign_keys=[server_id], back_populates="players")
-    recieved_items: Mapped[list["ReceivedItem"]] = relationship("ReceivedItem", back_populates="player", cascade="all, delete-orphan")
+    received_items: Mapped[list["ReceivedItem"]] = relationship("ReceivedItem", back_populates="player", cascade="all, delete-orphan")
     bounties: Mapped[list["Bounty"]] = relationship("Bounty", back_populates="player", cascade="all, delete-orphan")
     
 class Game(base):
@@ -74,7 +74,7 @@ class Item(base):
     
     game: Mapped["Game"] = relationship("Game", foreign_keys=[server_id, game_name], back_populates="items")
     bounties: Mapped[list["Bounty"]] = relationship("Bounty", back_populates="item", viewonly=True)
-    recieved_items: Mapped[list["ReceivedItem"]] = relationship("ReceivedItem", back_populates="item", viewonly=True)
+    received_items: Mapped[list["ReceivedItem"]] = relationship("ReceivedItem", back_populates="item", viewonly=True)
     
 
 class Location(base):
@@ -90,10 +90,10 @@ class Location(base):
     )
     
     game: Mapped["Game"] = relationship("Game", foreign_keys=[server_id, game_name], back_populates="locations")
-    recieved_items: Mapped[list["ReceivedItem"]] = relationship("ReceivedItem", back_populates="location", viewonly=True)
+    received_items: Mapped[list["ReceivedItem"]] = relationship("ReceivedItem", back_populates="location", viewonly=True)
 
 class ReceivedItem(base):
-    __tablename__ = "recieved_item"
+    __tablename__ = "received_item"
     
     server_id: Mapped[int] = mapped_column(Integer, primary_key=True)
     slot: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -106,9 +106,9 @@ class ReceivedItem(base):
         ForeignKeyConstraint(["server_id", "location_id"], ["location.server_id", "location.location_id"], ondelete="CASCADE")
     )
     
-    player: Mapped["Player"] = relationship("Player", foreign_keys=[server_id, slot], back_populates="recieved_items")
-    item: Mapped["Item"] = relationship("Item", foreign_keys=[server_id, item_id], back_populates="recieved_items", viewonly=True)
-    location: Mapped["Location"] = relationship("Location", foreign_keys=[server_id, location_id], back_populates="recieved_items", viewonly=True)
+    player: Mapped["Player"] = relationship("Player", foreign_keys=[server_id, slot], back_populates="received_items")
+    item: Mapped["Item"] = relationship("Item", foreign_keys=[server_id, item_id], back_populates="received_items", viewonly=True)
+    location: Mapped["Location"] = relationship("Location", foreign_keys=[server_id, location_id], back_populates="received_items", viewonly=True)
 
 class Bounty(base):
     __tablename__ = "bounty"
@@ -161,12 +161,12 @@ def create_player(server_id: int, slot: int, archipelago_alias: str, game_name: 
 def get_player(server_id: int, slot: int) -> Player:
     return session.get(Player, {"server_id": server_id, "slot": slot})
 
-def create_recieved_item(server_id: int, slot: int, item_id: int, location_id: int):
-    recieved_item = ReceivedItem(server_id=server_id, slot=slot, item_id=item_id, location_id=location_id)
-    session.add(recieved_item)
+def create_received_item(server_id: int, slot: int, item_id: int, location_id: int):
+    received_item = ReceivedItem(server_id=server_id, slot=slot, item_id=item_id, location_id=location_id)
+    session.add(received_item)
     session.commit()
     
-def has_recieved_item(server_id: int, slot: int, location_id: int) -> bool:
+def has_received_item(server_id: int, slot: int, location_id: int) -> bool:
     if session.get(ReceivedItem, {"server_id": server_id, "slot": slot, "location_id": location_id}):
         return True
     return False

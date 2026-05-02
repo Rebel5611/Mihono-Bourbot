@@ -3,3 +3,4 @@ __pycache__
 apikeys.py
 archipelago/serverdata/*
 !archipelago/serverdata/MultiServer.py
+bot_data.db
