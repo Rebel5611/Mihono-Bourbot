@@ -6,7 +6,6 @@ import ssl
 import typing
 import uuid
 import urllib
-import bidict
 import certifi
 from docker import DockerClient
 import websockets
@@ -49,7 +48,7 @@ class ArchipelagoInstance():
         
     
     def start_server(self):
-        self.server = self.docker_client.containers.run("archipelago-run", name="archipelago-run", stdin_open=True, tty=True, remove=True, detach=True, ports={'38281/tcp': 56112}, volumes=["/home/rebel5611/mihono_bourbot/serverdata/archipelago/serverdata:/server"], network="rebel5611_archipelago")
+        self.server = self.docker_client.containers.run("archipelago-run", name="archipelago-run", stdin_open=True, tty=True, remove=True, detach=True, ports={'38281/tcp': 56112}, volumes=[f"/home/rebel5611/mihono_bourbot/serverdata/archipelago/{self.server_id}/output:/server/output"], network="rebel5611_archipelago")
         self.archipelago_client = asyncio.create_task(self.connect_to_multiworld("ws://archipelago-run:38281"), name="archipelago client")
     
     def check_server_status(self):
@@ -181,7 +180,7 @@ class ArchipelagoInstance():
                     finder = f"<@{finding_user.user_id}>" if finding_user else finding_player.archipelago_alias
                     receiver = f"<@{receiving_user.user_id}>" if finding_user else receiving_player.archipelago_alias
                     await self.send_message(f"{finder} has found {receiver}'s {bounty.item.item_name} at their {location.location_name}!")
-                    item.bounties.remove(bounty)
+                    receiving_player.bounties.remove(bounty)
                     database.commit()
 
         elif cmd == 'InvalidPacket':

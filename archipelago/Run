@@ -1,6 +1,5 @@
 FROM python:3.12-slim-bookworm
 
-# Install requirements
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     git \
@@ -48,6 +47,8 @@ RUN pip install --no-cache-dir \
     "zilliandomizer @ git+https://github.com/beauxq/zilliandomizer@96d9a20f8278cee64bb4db859fbd874e0f332d36#0.9.1" \
     "typing-extensions>=4.7, <5" \
     "pyevermizer==0.50.1"
+
+COPY server /server
 
 WORKDIR /server
 ENTRYPOINT [ "./entrypoint.sh" ]

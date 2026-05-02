@@ -198,10 +198,9 @@ def set_game_items_and_locations(server_id: int, game_name: str, items: dict[str
         server = session.get(Server, {"server_id": server_id})
         game = Game(server_id=server_id, game_name=game_name)
         server.games.append(game)
-        session.commit()
-
     game.items.clear()
     game.locations.clear()
+    session.commit()
     
     for name, id in items.items():
         item = Item(server_id=game.server_id, game_name=game.game_name, item_id=id, item_name=name)

@@ -61,23 +61,23 @@ class Archipelago(commands.Cog):
     async def upload_yamls(self, interaction: Interaction, attachment: discord.Attachment):
         name, extension = os.path.splitext(attachment.filename)
         if extension.lower() == ".zip":
-            files = glob.glob('/server/archipelago/serverdata/Players/*')
+            files = glob.glob(f"/server/archipelago/{interaction.guild.id}/Players/*")
             for f in files:
                 os.remove(f)
     
             await attachment.save(fp=attachment.filename)
 
             with zipfile.ZipFile(attachment.filename, 'r') as zip_ref:
-                zip_ref.extractall("/server/archipelago/serverdata/Players/")
+                zip_ref.extractall(f"/server/archipelago/{interaction.guild.id}/Players/")
                 
             os.remove(attachment.filename)
             await interaction.response.send_message("Files saved!", ephemeral=True)
         elif extension.lower() == ".yaml":
-            files = glob.glob('/server/archipelago/serverdata/Players/*')
+            files = glob.glob(f"/server/archipelago/{interaction.guild.id}/Players/*")
             for f in files:
                 os.remove(f)
     
-            await attachment.save(fp='/server/archipelago/serverdata/Players/' + attachment.filename)
+            await attachment.save(fp=f"/server/archipelago/{interaction.guild.id}/Players/" + attachment.filename)
             await interaction.response.send_message("File saved!", ephemeral=True)
         else:
             await interaction.response.send_message("Invalid file type! Please upload a .zip file or a single .yaml", ephemeral=True)
@@ -85,7 +85,7 @@ class Archipelago(commands.Cog):
     @archipelago.command(name="generate_game", description = "Generate a new Archipelago game")
     async def generate_game(self, interaction: Interaction):
         await interaction.response.defer()
-        files = glob.glob('/server/archipelago/serverdata/output/*')
+        files = glob.glob(f"/server/archipelago/{interaction.guild.id}/output/*")
         for f in files:
             os.remove(f)
         self.docker_client.images.build(path="/server/archipelago/", dockerfile="Generate", tag="archipelago-generate", rm=True)
@@ -98,18 +98,18 @@ class Archipelago(commands.Cog):
         except Exception as e:
             print(f"An unexpected error occurred: {e}")
         
-        result = self.docker_client.containers.run("archipelago-generate", name="archipelago-generate", remove=True, detach=True, volumes=["/home/rebel5611/mihono_bourbot/serverdata/archipelago/serverdata:/server"]).wait()
+        result = self.docker_client.containers.run("archipelago-generate", name="archipelago-generate", remove=True, detach=True, volumes=[f"/home/rebel5611/mihono_bourbot/serverdata/archipelago/{interaction.guild.id}/output:/server/output", f"/home/rebel5611/mihono_bourbot/serverdata/archipelago/{interaction.guild.id}/Players:/server/Players"]).wait()
         if result['StatusCode'] == 0:
-            output_filepath = glob.glob('/server/archipelago/serverdata/output/*')[0]
+            output_filepath = glob.glob(f"/server/archipelago/{interaction.guild.id}/output/*")[0]
             await interaction.followup.send("Multiworld generated", file=discord.File(output_filepath))
             
             with zipfile.ZipFile(output_filepath, 'r') as zip_ref:
-                zip_ref.extractall("/server/archipelago/serverdata/output/")
-            files = glob.glob('/server/archipelago/serverdata/output/*')
+                zip_ref.extractall(f"/server/archipelago/{interaction.guild.id}/output/")
+            files = glob.glob(f"/server/archipelago/{interaction.guild.id}/output/*")
             for f in files:
                 name, extension = os.path.splitext(f)
                 if extension.lower() == ".archipelago":
-                    os.rename(f, "/server/archipelago/serverdata/output/server.archipelago")
+                    os.rename(f, f"/server/archipelago/{interaction.guild.id}/output/server.archipelago")
                 else:
                     os.remove(f)
                     
@@ -147,8 +147,8 @@ class Archipelago(commands.Cog):
             return
         await interaction.response.send_message(f"No bounty for item '{item_name}' exists", ephemeral=True)
 
-    @bounty_board.command(name= "get_bounties", description = "Get the current Archipelago bounties")
-    async def get_bounties(self, interaction: Interaction):
+    @bounty_board.command(name= "show_bounties", description = "Get the current Archipelago bounties")
+    async def show_bounties(self, interaction: Interaction):
         server = database.get_server(interaction.guild.id)
         bounties = ""
         player_tuples = [(user, player) for user in server.users if (player := database.get_player_by_user(user)) is not None]
@@ -167,7 +167,7 @@ class Archipelago(commands.Cog):
     async def start(self, interaction: Interaction):
         await interaction.response.defer()
         
-        if len(glob.glob('/server/archipelago/serverdata/output/*')) == 0:
+        if len(glob.glob(f"/server/archipelago/{interaction.guild.id}/output/*")) == 0:
             await interaction.followup.send("No game found. Upload your yamls with /archipelago upload_yamls and then generate one with /archipelago generate_game")
         elif interaction.guild.id in self.archipelago_instances.keys() and self.archipelago_instances[interaction.guild.id].check_server_status():
             await interaction.followup.send("A server is already running. Please stop it first with /archipelago server stop")
