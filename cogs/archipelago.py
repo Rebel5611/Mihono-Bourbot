@@ -1,4 +1,5 @@
 from archipelago_instance import ArchipelagoInstance
+import asyncio
 import database
 import discord
 import docker
@@ -24,9 +25,11 @@ class Archipelago(commands.Cog):
     @archipelago.command(name="get_server_address", description = "Get the address to join the Archipelago server")
     async def get_server_address(self, interaction: Interaction):
         role = discord.utils.get(interaction.guild.roles, name="Archipelago")
-        if role in interaction.user.roles:
+        if role in interaction.user.roles and interaction.guild.id in self.archipelago_instances:
             ip = requests.get('https://checkip.amazonaws.com').text.strip()
-            await interaction.response.send_message(f"The address for the Archipelago game is: {ip}:56112", ephemeral=True)
+            await interaction.response.send_message(f"The address for the Archipelago game is: {ip}:{self.archipelago_instances[interaction.guild.id].port}", ephemeral=True)
+        elif interaction.guild.id not in self.archipelago_instances:
+            await interaction.response.send_message("There is no running server.", ephemeral=True)
         else:
             await interaction.response.send_message("You do not have access to this server.", ephemeral=True)
 
@@ -88,19 +91,21 @@ class Archipelago(commands.Cog):
         files = glob.glob(f"/server/archipelago/{interaction.guild.id}/output/*")
         for f in files:
             os.remove(f)
-        self.docker_client.images.build(path="/server/archipelago/", dockerfile="Generate", tag="archipelago-generate", rm=True)
         
         try:
-            prev_container = self.docker_client.containers.get("archipelago-generate")
+            prev_container = self.docker_client.containers.get(f"archipelago-generate-{interaction.guild.id}")
             prev_container.remove(force=True)
         except docker.errors.NotFound:
             print("No old container found, proceeding...")
         except Exception as e:
             print(f"An unexpected error occurred: {e}")
         
-        result = self.docker_client.containers.run("archipelago-generate", name="archipelago-generate", remove=True, detach=True, volumes=[f"/home/rebel5611/mihono_bourbot/serverdata/archipelago/{interaction.guild.id}/output:/server/output", f"/home/rebel5611/mihono_bourbot/serverdata/archipelago/{interaction.guild.id}/Players:/server/Players"]).wait()
+        
+        result = await asyncio.to_thread(self.generate_multiworld, interaction.guild.id)
+        
         if result['StatusCode'] == 0:
             output_filepath = glob.glob(f"/server/archipelago/{interaction.guild.id}/output/*")[0]
+    
             await interaction.followup.send("Multiworld generated", file=discord.File(output_filepath))
             
             with zipfile.ZipFile(output_filepath, 'r') as zip_ref:
@@ -171,19 +176,23 @@ class Archipelago(commands.Cog):
             await interaction.followup.send("No game found. Upload your yamls with /archipelago upload_yamls and then generate one with /archipelago generate_game")
         elif interaction.guild.id in self.archipelago_instances.keys() and self.archipelago_instances[interaction.guild.id].check_server_status():
             await interaction.followup.send("A server is already running. Please stop it first with /archipelago server stop")
-        else:
-            try:
-                prev_container = self.docker_client.containers.get("archipelago-run")
-                prev_container.remove(force=True)
-            except docker.errors.NotFound:
-                print("No old container found, proceeding...")
-            except Exception as e:
-                print(f"An unexpected error occurred: {e}")
-            
-            self.docker_client.images.build(path="/server/archipelago/", dockerfile="Run", tag="archipelago-run", rm=True)
-            self.archipelago_instances[interaction.guild.id] = ArchipelagoInstance(server_id=interaction.guild.id, discord_client=self.client, docker_client=self.docker_client)
-            self.archipelago_instances[interaction.guild.id].start_server()
-            await interaction.followup.send("Server started")
+        else:    
+            port = 56113
+            open_port = False
+            while not open_port:
+                open_port = True
+                for instance in self.archipelago_instances.values():
+                    if instance.port == port:
+                        open_port = False
+                if not open_port:
+                    port += 1
+                    
+            if port > 56119:
+                await interaction.followup.send("There are no available ports.")
+            else:
+                self.archipelago_instances[interaction.guild.id] = ArchipelagoInstance(server_id=interaction.guild.id, discord_client=self.client, port=port, docker_client=self.docker_client)
+                self.archipelago_instances[interaction.guild.id].start_server()
+                await interaction.followup.send("Server started")
             
     @server.command(name="stop", description = "Stop the Archipelago server")
     async def stop(self, interaction: Interaction):
@@ -203,7 +212,11 @@ class Archipelago(commands.Cog):
                 await instance.archipelago_client
                 
             instance.server.stop()
-            await interaction.followup.send("Server stopped")
+            await interaction.followup.send("Server stopped")  
+
+    def generate_multiworld(self, server_id: int):
+        self.docker_client.images.build(path="/server/archipelago/", dockerfile="Generate", tag="archipelago-generate", rm=True)
+        return self.docker_client.containers.run("archipelago-generate", name=f"archipelago-generate-{server_id}", remove=True, detach=True, volumes=[f"/home/rebel5611/mihono_bourbot/serverdata/archipelago/{server_id}/output:/server/output", f"/home/rebel5611/mihono_bourbot/serverdata/archipelago/{server_id}/Players:/server/Players"]).wait()
 
 async def setup(client):
     await client.add_cog(Archipelago(client))

@@ -26,6 +26,7 @@ class User(base):
     
     __table_args__ = (
         ForeignKeyConstraint(["server_id"], ["server.server_id"], ondelete="CASCADE"),
+        Index("ix_user_server_alias", "server_id", "archipelago_alias")
     )
 
     server: Mapped["Server"] = relationship("Server", foreign_keys=[server_id], back_populates="users")
@@ -40,6 +41,7 @@ class Player(base):
     
     __table_args__ = (
         ForeignKeyConstraint(["server_id"], ["server.server_id"], ondelete="CASCADE"),
+        Index("ix_player_server_alias", "server_id", "archipelago_alias")
     )
     
     server: Mapped["Server"] = relationship("Server", foreign_keys=[server_id], back_populates="players")
@@ -70,6 +72,7 @@ class Item(base):
     
     __table_args__ = (
         ForeignKeyConstraint(["server_id", "game_name"], ["game.server_id", "game.game_name"], ondelete="CASCADE"),
+        Index("ix_item_lookup", "server_id", "game_name", "item_name")
     )
     
     game: Mapped["Game"] = relationship("Game", foreign_keys=[server_id, game_name], back_populates="items")
@@ -142,16 +145,10 @@ def get_user(server_id: int, user_id: int) -> User:
     return user
 
 def get_player_by_user(user: User) -> Player:
-    for player in user.server.players:
-        if player.archipelago_alias == user.archipelago_alias:
-            return player
-    return None
+    return session.query(Player).filter_by(server_id=user.server_id, archipelago_alias=user.archipelago_alias).first()
         
 def get_user_by_player(player: Player) -> User:
-    for user in player.server.users:
-        if user.archipelago_alias == player.archipelago_alias:
-            return user
-    return None
+    return session.query(User).filter_by(server_id=player.server_id, archipelago_alias=player.archipelago_alias).first()
 
 def create_player(server_id: int, slot: int, archipelago_alias: str, game_name: str):
     player = Player(server_id=server_id, slot=slot, archipelago_alias=archipelago_alias, game_name=game_name)
@@ -162,9 +159,10 @@ def get_player(server_id: int, slot: int) -> Player:
     return session.get(Player, {"server_id": server_id, "slot": slot})
 
 def create_received_item(server_id: int, slot: int, item_id: int, location_id: int):
-    received_item = ReceivedItem(server_id=server_id, slot=slot, item_id=item_id, location_id=location_id)
-    session.add(received_item)
-    session.commit()
+    if not has_received_item(server_id, slot, location_id):
+        received_item = ReceivedItem(server_id=server_id, slot=slot, item_id=item_id, location_id=location_id)
+        session.add(received_item)
+        session.commit()
     
 def has_received_item(server_id: int, slot: int, location_id: int) -> bool:
     if session.get(ReceivedItem, {"server_id": server_id, "slot": slot, "location_id": location_id}):
@@ -178,11 +176,7 @@ def get_location(server_id: int, location_id: int) -> Location:
     return session.get(Location, {"server_id": server_id, "location_id": location_id})
 
 def get_item_by_name(player: Player, item_name: str) -> Item:
-    if (game := session.get(Game, {"server_id": player.server_id, "game_name": player.game_name})) is not None:
-        for item in game.items:
-            if item.item_name == item_name:
-                return item
-    return None
+    return session.query(Item).filter_by(server_id=player.server_id, game_name=player.game_name, item_name=item_name).first()
 
 def create_bounty(player: Player, item: Item):
     bounty = Bounty(server_id=player.server_id, slot=player.slot, item_id=item.item_id)

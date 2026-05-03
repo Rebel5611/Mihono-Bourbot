@@ -1,21 +1,22 @@
 import asyncio
+import certifi
+import database
+import docker
+from docker import DockerClient
 import enum
 import json
-from pathlib import Path
 import ssl
 import typing
 import uuid
 import urllib
-import certifi
-from docker import DockerClient
 import websockets
 from websockets.protocol import State
-import database
 
 
 class ArchipelagoInstance():
     server_id: int
     discord_client = None
+    port: int
     docker_client: DockerClient
     
     server: typing.Container = None
@@ -26,9 +27,10 @@ class ArchipelagoInstance():
     disconnected_intentionally: bool = False
     autoreconnect_task: asyncio.Task = None
     
-    def __init__(self, server_id: int, discord_client, docker_client: DockerClient):
+    def __init__(self, server_id: int, discord_client, port: int, docker_client: DockerClient):
         self.server_id = server_id
         self.discord_client = discord_client
+        self.port = port
         self.docker_client = docker_client
         
         self.decode = json.JSONDecoder(object_hook=self._object_hook).decode
@@ -48,8 +50,17 @@ class ArchipelagoInstance():
         
     
     def start_server(self):
-        self.server = self.docker_client.containers.run("archipelago-run", name="archipelago-run", stdin_open=True, tty=True, remove=True, detach=True, ports={'38281/tcp': 56112}, volumes=[f"/home/rebel5611/mihono_bourbot/serverdata/archipelago/{self.server_id}/output:/server/output"], network="rebel5611_archipelago")
-        self.archipelago_client = asyncio.create_task(self.connect_to_multiworld("ws://archipelago-run:38281"), name="archipelago client")
+        try:
+            prev_container = self.docker_client.containers.get(f"archipelago-run-{self.server_id}")
+            prev_container.remove(force=True)
+        except docker.errors.NotFound:
+            print("No old container found, proceeding...")
+        except Exception as e:
+            print(f"An unexpected error occurred: {e}")
+
+        self.docker_client.images.build(path="/server/archipelago/", dockerfile="Run", tag="archipelago-run", rm=True)
+        self.server = self.docker_client.containers.run("archipelago-run", name=f"archipelago-run-{self.server_id}", stdin_open=True, tty=True, remove=True, detach=True, ports={'38281/tcp': self.port}, volumes=[f"/home/rebel5611/mihono_bourbot/serverdata/archipelago/{self.server_id}/output:/server/output"], network="archipelago")
+        self.archipelago_client = asyncio.create_task(self.connect_to_multiworld(f"ws://archipelago-run-{self.server_id}:38281"), name="archipelago client")
     
     def check_server_status(self):
         if self.server != None:
@@ -189,7 +200,7 @@ class ArchipelagoInstance():
     async def server_autoreconnect(self):
         await asyncio.sleep(self.reconnect_delay)
         if self.archipelago_client is None:
-            self.archipelago_client = asyncio.create_task(self.connect_to_multiworld("ws://archipelago-run:38281"), name="server loop")
+            self.archipelago_client = asyncio.create_task(self.connect_to_multiworld(f"ws://archipelago-run-{self.server_id}:38281"), name="archipelago client")
 
     async def send_message(self, msg: str):
         if reporting_channel := database.get_server(self.server_id).reporting_channel:
