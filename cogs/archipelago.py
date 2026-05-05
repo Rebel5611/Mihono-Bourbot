@@ -176,7 +176,7 @@ class Archipelago(commands.Cog):
             await interaction.followup.send("No game found. Upload your yamls with /archipelago upload_yamls and then generate one with /archipelago generate_game")
         elif interaction.guild.id in self.archipelago_instances.keys() and self.archipelago_instances[interaction.guild.id].check_server_status():
             await interaction.followup.send("A server is already running. Please stop it first with /archipelago server stop")
-        else:    
+        elif interaction.guild.id not in self.archipelago_instances.keys():
             port = 56113
             open_port = False
             while not open_port:
@@ -189,10 +189,12 @@ class Archipelago(commands.Cog):
                     
             if port > 56119:
                 await interaction.followup.send("There are no available ports.")
+                return
             else:
                 self.archipelago_instances[interaction.guild.id] = ArchipelagoInstance(server_id=interaction.guild.id, discord_client=self.client, port=port, docker_client=self.docker_client)
-                self.archipelago_instances[interaction.guild.id].start_server()
-                await interaction.followup.send("Server started")
+        
+        self.archipelago_instances[interaction.guild.id].start_server()
+        await interaction.followup.send("Server started")
             
     @server.command(name="stop", description = "Stop the Archipelago server")
     async def stop(self, interaction: Interaction):

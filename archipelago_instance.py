@@ -179,7 +179,7 @@ class ArchipelagoInstance():
                 receiving_player = database.get_player(self.server_id, int(args['receiving']))
                 item = database.get_item(self.server_id, int(args['item'].item))
                 location = database.get_location(self.server_id, int(args['item'].location))
-                database.create_recieved_item(self.server_id, receiving_player.slot, item.item_id, location.location_id)
+                database.create_received_item(self.server_id, receiving_player.slot, item.item_id, location.location_id)
                 database.commit()
                 
                 if len(item.bounties) > 0:
@@ -254,17 +254,17 @@ class Player():
     game: str
     team: int
     mention: str
-    recieved_items: dict
+    received_items: dict
     bounties: dict
     def __init__(self, slot: int, alias: str, name: str, game: str, team: int,
-                 mention: str = None, recieved_items: dict = {}, bounties: dict = {}):
+                 mention: str = None, received_items: dict = {}, bounties: dict = {}):
         self.slot = slot
         self.alias = alias
         self.name = name
         self.game = game
         self.team = team
         self.mention = alias if mention is None else mention
-        self.recieved_items = recieved_items
+        self.received_items = received_items
         self.bounties = bounties
 
     class Encoder(json.JSONEncoder):
@@ -278,7 +278,7 @@ class Player():
                     "game": o.game,
                     "team": o.team,
                     "mention": o.mention,
-                    "recieved_items": o.recieved_items,
+                    "received_items": o.received_items,
                     "bounties": o.bounties
                 }
             return super(Player.Encoder, self).default(o)
@@ -290,7 +290,7 @@ class Player():
         def object_hook(self, o):
             if "_type" in o:
                 if o["_type"] == "Player":
-                    return Player(slot=o["slot"], alias=o["alias"], name=o["name"], game=o["game"], team=o["team"], mention=o["mention"], recieved_items=o["recieved_items"], bounties=o["bounties"])
+                    return Player(slot=o["slot"], alias=o["alias"], name=o["name"], game=o["game"], team=o["team"], mention=o["mention"], received_items=o["received_items"], bounties=o["bounties"])
             return o
         
 class ByValue:
