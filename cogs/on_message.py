@@ -5,7 +5,6 @@ import os
 import random
 from discord.ext import commands
 from discord import app_commands, Interaction
-from apikeys import guild_ids
 
 class OnMessage(commands.Cog):
     def __init__(self, client):

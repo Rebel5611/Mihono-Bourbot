@@ -79,7 +79,8 @@ class Archipelago(commands.Cog):
             files = glob.glob(f"/server/archipelago/{interaction.guild.id}/Players/*")
             for f in files:
                 os.remove(f)
-    
+
+            os.makedirs(f"/server/archipelago/{interaction.guild.id}/Players/", exist_ok=True)
             await attachment.save(fp=f"/server/archipelago/{interaction.guild.id}/Players/" + attachment.filename)
             await interaction.response.send_message("File saved!", ephemeral=True)
         else:

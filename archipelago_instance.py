@@ -179,7 +179,7 @@ class ArchipelagoInstance():
                 receiving_player = database.get_player(self.server_id, int(args['receiving']))
                 item = database.get_item(self.server_id, int(args['item'].item))
                 location = database.get_location(self.server_id, int(args['item'].location))
-                database.create_recieved_item(self.server_id, receiving_player.slot, item.item_id, location.location_id)
+                database.create_received_item(self.server_id, receiving_player.slot, item.item_id, location.location_id)
                 database.commit()
                 
                 if len(item.bounties) > 0:
@@ -189,7 +189,7 @@ class ArchipelagoInstance():
                     finding_user = database.get_user_by_player(finding_player)
 
                     finder = f"<@{finding_user.user_id}>" if finding_user else finding_player.archipelago_alias
-                    receiver = f"<@{receiving_user.user_id}>" if finding_user else receiving_player.archipelago_alias
+                    receiver = f"<@{receiving_user.user_id}>" if receiving_user else receiving_player.archipelago_alias
                     await self.send_message(f"{finder} has found {receiver}'s {bounty.item.item_name} at their {location.location_name}!")
                     receiving_player.bounties.remove(bounty)
                     database.commit()
@@ -204,7 +204,8 @@ class ArchipelagoInstance():
 
     async def send_message(self, msg: str):
         if reporting_channel := database.get_server(self.server_id).reporting_channel:
-            await self.discord_client.get_channel(reporting_channel).send(msg)
+            if channel := self.discord_client.get_channel(reporting_channel):
+                await channel.send(msg)
         
     def _object_hook(self, o: typing.Any) -> typing.Any:
         if isinstance(o, dict):

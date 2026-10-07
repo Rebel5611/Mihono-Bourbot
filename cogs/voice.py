@@ -2,7 +2,6 @@ import asyncio
 import discord
 from discord.ext import commands
 from discord import app_commands, Interaction, FFmpegPCMAudio
-from apikeys import guild_ids
 
 class Voice(commands.Cog):
     voice = app_commands.Group(name="voice", description="Commands related to voice channels")

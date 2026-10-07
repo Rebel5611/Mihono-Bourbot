@@ -1,7 +1,6 @@
 import discord
 from discord.ext import commands
 from discord import app_commands, Interaction
-from apikeys import guild_ids
 
 class Hello(commands.Cog):
 
