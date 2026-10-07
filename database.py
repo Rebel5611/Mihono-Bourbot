@@ -1,6 +1,7 @@
 from typing import Optional
 from sqlalchemy import *
 from sqlalchemy.orm import *
+from sqlalchemy.ext.associationproxy import association_proxy
 
 base = declarative_base()
 
@@ -16,20 +17,35 @@ class Server(base):
     players: Mapped[list["Player"]] = relationship("Player", back_populates="server", cascade="all, delete-orphan")
     games: Mapped[list["Game"]] = relationship("Game", back_populates="server", cascade="all, delete-orphan")
 
-
 class User(base):
     __tablename__ = "user"
 
     server_id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    archipelago_alias: Mapped[Optional[str]] = mapped_column(String)
     
     __table_args__ = (
         ForeignKeyConstraint(["server_id"], ["server.server_id"], ondelete="CASCADE"),
-        Index("ix_user_server_alias", "server_id", "archipelago_alias")
     )
 
     server: Mapped["Server"] = relationship("Server", foreign_keys=[server_id], back_populates="users")
+    
+    _alias_objects: Mapped[list["UserAlias"]] = relationship("UserAlias", back_populates="user", cascade="all, delete-orphan")
+    aliases: list[str] = association_proxy(target_collection="_alias_objects", attr="archipelago_alias",
+                                                             creator=lambda alias_text: UserAlias(archipelago_alias=alias_text))
+    
+class UserAlias(base):
+    __tablename__ = "useralias"
+    
+    server_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    archipelago_alias: Mapped[str] = mapped_column(String, primary_key=True)
+    
+    __table_args__ = (
+        ForeignKeyConstraint(["server_id", "user_id"], ["user.server_id", "user.user_id"], ondelete="CASCADE"),
+        Index("ix_user_alias_lookup", "server_id", "archipelago_alias")
+    )
+    
+    user: Mapped["User"] = relationship("User", back_populates="_alias_objects")
     
 class Player(base):
     __tablename__ = "player"
@@ -144,11 +160,14 @@ def get_user(server_id: int, user_id: int) -> User:
         session.commit()
     return user
 
-def get_player_by_user(user: User) -> Player:
-    return session.query(Player).filter_by(server_id=user.server_id, archipelago_alias=user.archipelago_alias).first()
+def get_players_by_user(user: User) -> list[Player]:
+    return session.query(Player).filter(
+        Player.server_id == user.server_id,
+        Player.archipelago_alias.in_(user.aliases)).all()
         
 def get_user_by_player(player: Player) -> User:
-    return session.query(User).filter_by(server_id=player.server_id, archipelago_alias=player.archipelago_alias).first()
+    user_alias = session.query(UserAlias).filter_by(server_id=player.server_id, archipelago_alias=player.archipelago_alias).first()
+    return user_alias.user if user_alias else None
 
 def create_player(server_id: int, slot: int, archipelago_alias: str, game_name: str):
     player = Player(server_id=server_id, slot=slot, archipelago_alias=archipelago_alias, game_name=game_name)

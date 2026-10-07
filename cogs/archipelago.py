@@ -53,12 +53,12 @@ class Archipelago(commands.Cog):
         else:
             await interaction.response.send_message("You do not have permission to run this command!", ephemeral=True)
     
-    @archipelago.command(name="set_alias", description = "Set your Archipelago alias")
-    async def set_alias(self, interaction: Interaction, alias: str):
+    @archipelago.command(name="set_aliases", description = "Set your Archipelago aliases as a comma seperated list")
+    async def set_aliases(self, interaction: Interaction, aliases: str):
         user = database.get_user(interaction.guild.id, interaction.user.id)
-        user.archipelago_alias = alias
+        user.aliases = [alias for raw_alias in aliases.split(',') if (alias := raw_alias.strip())]
         database.commit()
-        await interaction.response.send_message(f"Saved '{alias}' as your Archipelago alias", ephemeral=True)
+        await interaction.response.send_message(f"Saved!", ephemeral=True)
 
     @archipelago.command(name="upload_yamls", description = "Upload yamls to use for generating a new Archipelago game")
     async def upload_yamls(self, interaction: Interaction, attachment: discord.Attachment):
@@ -129,40 +129,60 @@ class Archipelago(commands.Cog):
     @bounty_board.command(name= "add_bounty", description = "Add a bounty for one of your Archipelago items")
     async def add_bounty(self, interaction: Interaction, item_name: str):
         user = database.get_user(interaction.guild.id, interaction.user.id)
-        if (player := database.get_player_by_user(user)) is not None:
-            if (item := database.get_item_by_name(player, item_name)) is not None:
-                if database.get_bounty(player, item) is None:
-                    database.create_bounty(player, item)
-                    database.commit()
-                    await interaction.response.send_message(f"Bounty added for {interaction.user.mention}'s {item_name}!")
-                else:
-                    await interaction.response.send_message(f"Bounty already exists for your {item_name}", ephemeral=True)
-            else:
-                await interaction.response.send_message(f"No such item '{item_name}' exists in your game.\n"
-                                                    "The item name may be different in the randomizer.", ephemeral=True)
+        if players := database.get_players_by_user(user):
+            for player in players:
+                if (item := database.get_item_by_name(player, item_name)):
+                    if database.get_bounty(player, item) is None:
+                        database.create_bounty(player, item)
+                        database.commit()
+                        await interaction.response.send_message(f"Bounty added for {interaction.user.mention}'s {item_name}!")
+                    else:
+                        await interaction.response.send_message(f"Bounty already exists for your {item_name}", ephemeral=True)
+                    return
+                        
+            await interaction.response.send_message(f"No such item '{item_name}' exists in your game(s).\n"
+                                                        "The item name may be different in the randomizer.", ephemeral=True)   
         else:
             await interaction.response.send_message("No player found. Either your alias is incorrect, or I haven't connected to the server", ephemeral=True)
     
     @bounty_board.command(name= "remove_bounty", description = "Remove one of your Archipelago bounties")
     async def remove_bounty(self, interaction: Interaction, item_name: str):
         user = database.get_user(interaction.guild.id, interaction.user.id)
-        if (player := database.get_player_by_user(user)) and (item := database.get_item_by_name(player, item_name)) and (bounty := database.get_bounty(player, item)):
-            player.bounties.remove(bounty)
-            database.commit()
-            await interaction.response.send_message(f"Bounty for {interaction.user.mention}'s {item_name} removed!")
-            return
+        if players := database.get_players_by_user(user):
+            for player in players:
+                if (item := database.get_item_by_name(player, item_name)) and (bounty := database.get_bounty(player, item)):
+                    player.bounties.remove(bounty)
+                    database.commit()
+                    await interaction.response.send_message(f"Bounty for {interaction.user.mention}'s {item_name} removed!")
+                    return
         await interaction.response.send_message(f"No bounty for item '{item_name}' exists", ephemeral=True)
 
     @bounty_board.command(name= "show_bounties", description = "Get the current Archipelago bounties")
     async def show_bounties(self, interaction: Interaction):
         server = database.get_server(interaction.guild.id)
         bounties = ""
-        player_tuples = [(user, player) for user in server.users if (player := database.get_player_by_user(user)) is not None]
-        for player_tuple in player_tuples:
-            if len(player_tuple[1].bounties) > 0:
-                bounties += f"<@{player_tuple[0].user_id}>:\n"
-                for bounty in player_tuple[1].bounties:
+        
+        unclaimed_players = set(server.players)
+        for user in server.users:
+            if (players := database.get_players_by_user(user)) and any(player.bounties for player in players):
+                bounties += f"<@{user.user_id}>:\n"
+                if len(players) > 1:
+                    for player in players:
+                        unclaimed_players.discard(player)
+                        if player.bounties:
+                            bounties += f"\t{player.game_name}:\n"
+                            for bounty in player.bounties:
+                                bounties += f"\t\t{bounty.item.item_name}\n"
+                else:
+                    unclaimed_players.discard(players[0])
+                    for bounty in players[0].bounties:
+                        bounties += f"\t{bounty.item.item_name}\n"
+        for player in unclaimed_players:
+            if player.bounties:
+                bounties += f"{player.archipelago_alias}:\n"
+                for bounty in player.bounties:
                     bounties += f"\t{bounty.item.item_name}\n"
+            
         bounties = bounties.strip()
         if bounties != '':
             await interaction.response.send_message(f"The current bounties are:\n{bounties}")
