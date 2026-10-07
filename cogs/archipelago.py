@@ -135,7 +135,7 @@ class Archipelago(commands.Cog):
                     if database.get_bounty(player, item) is None:
                         database.create_bounty(player, item)
                         database.commit()
-                        await interaction.response.send_message(f"Bounty added for {interaction.user.mention}'s {item_name}!")
+                        await interaction.response.send_message(f"Bounty added for {", ".join([f"<@{user.user_id}>" for user in database.get_users_by_player(player)])}'s {item_name}!")
                     else:
                         await interaction.response.send_message(f"Bounty already exists for your {item_name}", ephemeral=True)
                     return
@@ -153,7 +153,7 @@ class Archipelago(commands.Cog):
                 if (item := database.get_item_by_name(player, item_name)) and (bounty := database.get_bounty(player, item)):
                     player.bounties.remove(bounty)
                     database.commit()
-                    await interaction.response.send_message(f"Bounty for {interaction.user.mention}'s {item_name} removed!")
+                    await interaction.response.send_message(f"Bounty for {", ".join([f"<@{user.user_id}>" for user in database.get_users_by_player(player)])}'s {item_name} removed!")
                     return
         await interaction.response.send_message(f"No bounty for item '{item_name}' exists", ephemeral=True)
 
@@ -162,26 +162,16 @@ class Archipelago(commands.Cog):
         server = database.get_server(interaction.guild.id)
         bounties = ""
         
-        unclaimed_players = set(server.players)
-        for user in server.users:
-            if (players := database.get_players_by_user(user)) and any(player.bounties for player in players):
-                bounties += f"<@{user.user_id}>:\n"
-                if len(players) > 1:
-                    for player in players:
-                        unclaimed_players.discard(player)
-                        if player.bounties:
-                            bounties += f"\t{player.game_name}:\n"
-                            for bounty in player.bounties:
-                                bounties += f"\t\t{bounty.item.item_name}\n"
-                else:
-                    unclaimed_players.discard(players[0])
-                    for bounty in players[0].bounties:
-                        bounties += f"\t{bounty.item.item_name}\n"
-        for player in unclaimed_players:
+        for player in server.players:
             if player.bounties:
-                bounties += f"{player.archipelago_alias}:\n"
-                for bounty in player.bounties:
-                    bounties += f"\t{bounty.item.item_name}\n"
+                if users := [f"<@{user.user_id}>" for user in database.get_users_by_player(player)]:
+                    bounties += f"{", ".join(users)}'s {player.game_name}:\n"
+                    for bounty in player.bounties:
+                        bounties += f"\t\t{bounty.item.item_name}\n"
+                else:
+                    bounties += f"{player.archipelago_alias}'s {player.game_name}:\n"
+                    for bounty in player.bounties:
+                        bounties += f"\t\t{bounty.item.item_name}\n"
             
         bounties = bounties.strip()
         if bounties != '':

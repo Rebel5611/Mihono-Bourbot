@@ -165,9 +165,11 @@ def get_players_by_user(user: User) -> list[Player]:
         Player.server_id == user.server_id,
         Player.archipelago_alias.in_(user.aliases)).all()
         
-def get_user_by_player(player: Player) -> User:
-    user_alias = session.query(UserAlias).filter_by(server_id=player.server_id, archipelago_alias=player.archipelago_alias).first()
-    return user_alias.user if user_alias else None
+def get_users_by_player(player: Player) -> list[User]:
+    return session.query(User).join(
+        UserAlias, (User.server_id == UserAlias.server_id) & (User.user_id == UserAlias.user_id)).filter(
+        UserAlias.server_id == player.server_id,
+        UserAlias.archipelago_alias == player.archipelago_alias).all()
 
 def create_player(server_id: int, slot: int, archipelago_alias: str, game_name: str):
     player = Player(server_id=server_id, slot=slot, archipelago_alias=archipelago_alias, game_name=game_name)

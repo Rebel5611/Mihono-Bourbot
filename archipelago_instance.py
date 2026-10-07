@@ -184,12 +184,12 @@ class ArchipelagoInstance():
                 
                 if len(item.bounties) > 0:
                     bounty = item.bounties[0]
-                    receiving_user = database.get_user_by_player(receiving_player)
+                    receiving_users = database.get_users_by_player(receiving_player)
                     finding_player = database.get_player(self.server_id, int(args['item'].player))
-                    finding_user = database.get_user_by_player(finding_player)
+                    finding_users = database.get_users_by_player(finding_player)
 
-                    finder = f"<@{finding_user.user_id}>" if finding_user else finding_player.archipelago_alias
-                    receiver = f"<@{receiving_user.user_id}>" if receiving_user else receiving_player.archipelago_alias
+                    finder = ", ".join([f"<@{user.user_id}>" for user in finding_users]) if finding_users else finding_player.archipelago_alias
+                    receiver = ", ".join([f"<@{user.user_id}>" for user in receiving_users]) if receiving_users else receiving_player.archipelago_alias
                     await self.send_message(f"{finder} has found {receiver}'s {bounty.item.item_name} at their {location.location_name}!")
                     receiving_player.bounties.remove(bounty)
                     database.commit()
