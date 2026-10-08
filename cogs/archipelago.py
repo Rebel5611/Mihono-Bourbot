@@ -127,35 +127,59 @@ class Archipelago(commands.Cog):
             await interaction.followup.send("Multiworld generation failed")
 
     @bounty_board.command(name= "add_bounty", description = "Add a bounty for one of your Archipelago items")
-    async def add_bounty(self, interaction: Interaction, item_name: str):
-        user = database.get_user(interaction.guild.id, interaction.user.id)
-        if players := database.get_players_by_user(user):
+    async def add_bounty(self, interaction: Interaction, item_name: str, alias: str | None):
+        if alias:
+            players = [database.get_player_by_alias(interaction.guild.id, alias)]
+        else:
+            players = database.get_players_by_user(database.get_user(interaction.guild.id, interaction.user.id))
+        
+        if players:
+            player_items = []
             for player in players:
                 if (item := database.get_item_by_name(player, item_name)):
-                    if database.get_bounty(player, item) is None:
-                        database.create_bounty(player, item)
-                        database.commit()
-                        await interaction.response.send_message(f"Bounty added for {", ".join([f"<@{user.user_id}>" for user in database.get_users_by_player(player)])}'s {item_name}!")
-                    else:
-                        await interaction.response.send_message(f"Bounty already exists for your {item_name}", ephemeral=True)
-                    return
-                        
-            await interaction.response.send_message(f"No such item '{item_name}' exists in your game(s).\n"
+                    player_items.append((player, item))
+            
+            if len(player_items) == 0:
+                await interaction.response.send_message(f"No such item '{item_name}' exists in your game(s).\n"
                                                         "The item name may be different in the randomizer.", ephemeral=True)   
+            elif len(player_items) > 1:
+                await interaction.response.send_message(f"More than 1 possible item found. Use the alias argument to specify which game this is for.", ephemeral=True)
+            else:
+                player_item = player_items[0]
+                if database.get_bounty(player_item[0], player_item[1]) is None:
+                    database.create_bounty(player_item[0], player_item[1])
+                    database.commit()
+                    await interaction.response.send_message(f"Bounty added for {", ".join([f"<@{user.user_id}>" for user in database.get_users_by_player(player_item[0])])}'s {item_name}!")
+                else:
+                    await interaction.response.send_message(f"Bounty already exists for your {item_name}", ephemeral=True)
+                return
         else:
             await interaction.response.send_message("No player found. Either your alias is incorrect, or I haven't connected to the server", ephemeral=True)
     
     @bounty_board.command(name= "remove_bounty", description = "Remove one of your Archipelago bounties")
-    async def remove_bounty(self, interaction: Interaction, item_name: str):
-        user = database.get_user(interaction.guild.id, interaction.user.id)
-        if players := database.get_players_by_user(user):
+    async def remove_bounty(self, interaction: Interaction, item_name: str, alias: str | None):
+        if alias:
+            players = [database.get_player_by_alias(interaction.guild.id, alias)]
+        else:
+            players = database.get_players_by_user(database.get_user(interaction.guild.id, interaction.user.id))
+            
+        if players:
+            player_bounties = []
             for player in players:
                 if (item := database.get_item_by_name(player, item_name)) and (bounty := database.get_bounty(player, item)):
-                    player.bounties.remove(bounty)
-                    database.commit()
-                    await interaction.response.send_message(f"Bounty for {", ".join([f"<@{user.user_id}>" for user in database.get_users_by_player(player)])}'s {item_name} removed!")
-                    return
-        await interaction.response.send_message(f"No bounty for item '{item_name}' exists", ephemeral=True)
+                    player_bounties.append((player, bounty))
+            
+            if len(player_bounties) == 0:
+                await interaction.response.send_message(f"No bounty for item '{item_name}' exists", ephemeral=True) 
+            elif len(player_bounties) > 1:
+                await interaction.response.send_message(f"More than 1 possible bounty found. Use the alias argument to specify which game this is for.", ephemeral=True)
+            else:
+                player_bounty = player_bounties[0]
+                player_bounty[0].bounties.remove(player_bounty[1])
+                database.commit()
+                await interaction.response.send_message(f"Bounty for {", ".join([f"<@{user.user_id}>" for user in database.get_users_by_player(player_bounty[0])])}'s {item_name} removed!")
+        else:
+            await interaction.response.send_message("No player found. Either your alias is incorrect, or I haven't connected to the server", ephemeral=True)
 
     @bounty_board.command(name= "show_bounties", description = "Get the current Archipelago bounties")
     async def show_bounties(self, interaction: Interaction):
@@ -166,12 +190,11 @@ class Archipelago(commands.Cog):
             if player.bounties:
                 if users := [f"<@{user.user_id}>" for user in database.get_users_by_player(player)]:
                     bounties += f"{", ".join(users)}'s {player.game_name}:\n"
-                    for bounty in player.bounties:
-                        bounties += f"\t\t{bounty.item.item_name}\n"
                 else:
                     bounties += f"{player.archipelago_alias}'s {player.game_name}:\n"
-                    for bounty in player.bounties:
-                        bounties += f"\t\t{bounty.item.item_name}\n"
+
+                for bounty in player.bounties:
+                    bounties += f"\t\t{bounty.item.item_name}\n"
             
         bounties = bounties.strip()
         if bounties != '':

@@ -179,6 +179,9 @@ def create_player(server_id: int, slot: int, archipelago_alias: str, game_name: 
 def get_player(server_id: int, slot: int) -> Player:
     return session.get(Player, {"server_id": server_id, "slot": slot})
 
+def get_player_by_alias(server_id: int, archipelago_alias: str) -> Player:
+    return session.query(Player).filter_by(server_id=server_id, archipelago_alias=archipelago_alias).first()
+
 def create_received_item(server_id: int, slot: int, item_id: int, location_id: int):
     if not has_received_item(server_id, slot, location_id):
         received_item = ReceivedItem(server_id=server_id, slot=slot, item_id=item_id, location_id=location_id)
