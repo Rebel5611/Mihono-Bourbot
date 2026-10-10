@@ -149,7 +149,12 @@ class Archipelago(commands.Cog):
                 if database.get_bounty(player_item[0], player_item[1]) is None:
                     database.create_bounty(player_item[0], player_item[1])
                     database.commit()
-                    await interaction.response.send_message(f"Bounty added for {", ".join([f"<@{user.user_id}>" for user in database.get_users_by_player(player_item[0])])}'s {item_name}!")
+                    users = database.get_users_by_player(player_item[0])
+                    if users:
+                        names = ", ".join([f"<@{user.user_id}>" for user in users])
+                    else:
+                        names = player_item[0].archipelago_alias
+                    await interaction.response.send_message(f"Bounty added for {names}'s {item_name}!")
                 else:
                     await interaction.response.send_message(f"Bounty already exists for your {item_name}", ephemeral=True)
                 return

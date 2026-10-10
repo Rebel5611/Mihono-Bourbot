@@ -82,8 +82,8 @@ class Item(base):
     __tablename__ = "item"
 
     server_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    game_name: Mapped[str] = mapped_column(String, primary_key=True)
     item_id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    game_name: Mapped[str] = mapped_column(String)
     item_name: Mapped[str] = mapped_column(String)
     
     __table_args__ = (
@@ -100,8 +100,8 @@ class Location(base):
     __tablename__ = "location"
 
     server_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    game_name: Mapped[str] = mapped_column(String, primary_key=True)
     location_id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    game_name: Mapped[str] = mapped_column(String)
     location_name: Mapped[str] = mapped_column(String)
     
     __table_args__ = (
@@ -117,17 +117,20 @@ class ReceivedItem(base):
     server_id: Mapped[int] = mapped_column(Integer, primary_key=True)
     slot: Mapped[int] = mapped_column(Integer, primary_key=True)
     location_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    game_name: Mapped[str] = mapped_column(String)
     item_id: Mapped[int] = mapped_column(Integer)
     
     __table_args__ = (
         ForeignKeyConstraint(["server_id", "slot"], ["player.server_id", "player.slot"], ondelete="CASCADE"),
-        ForeignKeyConstraint(["server_id", "item_id"], ["item.server_id", "item.item_id"], ondelete="CASCADE"),
-        ForeignKeyConstraint(["server_id", "location_id"], ["location.server_id", "location.location_id"], ondelete="CASCADE")
+        ForeignKeyConstraint(["server_id", "game_name", "item_id"], ["item.server_id", "item.game_name", "item.item_id"], ondelete="CASCADE"),
+        ForeignKeyConstraint(["server_id", "game_name"], ["game.server_id", "game.game_name"], ondelete="CASCADE"),
+        ForeignKeyConstraint(["server_id", "game_name", "location_id"], ["location.server_id", "location.game_name", "location.location_id"], ondelete="CASCADE"),
+        Index("ix_received_item_lookup", "server_id", "game_name", "item_id")
     )
     
     player: Mapped["Player"] = relationship("Player", foreign_keys=[server_id, slot], back_populates="received_items")
-    item: Mapped["Item"] = relationship("Item", foreign_keys=[server_id, item_id], back_populates="received_items", viewonly=True)
-    location: Mapped["Location"] = relationship("Location", foreign_keys=[server_id, location_id], back_populates="received_items", viewonly=True)
+    item: Mapped["Item"] = relationship("Item", foreign_keys=[server_id, game_name, item_id], back_populates="received_items", viewonly=True)
+    location: Mapped["Location"] = relationship("Location", foreign_keys=[server_id, game_name, location_id], back_populates="received_items", viewonly=True)
 
 class Bounty(base):
     __tablename__ = "bounty"
@@ -135,14 +138,15 @@ class Bounty(base):
     server_id: Mapped[int] = mapped_column(Integer, primary_key=True)
     slot: Mapped[int] = mapped_column(Integer, primary_key=True)
     item_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    game_name: Mapped[str] = mapped_column(String)
     
     __table_args__ = (
         ForeignKeyConstraint(["server_id", "slot"], ["player.server_id", "player.slot"], ondelete="CASCADE"),
-        ForeignKeyConstraint(["server_id", "item_id"], ["item.server_id", "item.item_id"], ondelete="CASCADE")
+        ForeignKeyConstraint(["server_id", "game_name", "item_id"], ["item.server_id", "item.game_name", "item.item_id"], ondelete="CASCADE")
     )
     
     player: Mapped["Player"] = relationship("Player", foreign_keys=[server_id, slot], back_populates="bounties", overlaps="bounties")
-    item: Mapped["Item"] = relationship("Item", foreign_keys=[server_id, item_id], back_populates="bounties", overlaps="player,bounties")
+    item: Mapped["Item"] = relationship("Item", foreign_keys=[server_id, game_name, item_id], back_populates="bounties", overlaps="player,bounties")
 
 def get_server(server_id: int) -> Server:
     server = session.get(Server, server_id)
@@ -182,9 +186,9 @@ def get_player(server_id: int, slot: int) -> Player:
 def get_player_by_alias(server_id: int, archipelago_alias: str) -> Player:
     return session.query(Player).filter_by(server_id=server_id, archipelago_alias=archipelago_alias).first()
 
-def create_received_item(server_id: int, slot: int, item_id: int, location_id: int):
+def create_received_item(server_id: int, slot: int, game_name: str, item_id: int, location_id: int):
     if not has_received_item(server_id, slot, location_id):
-        received_item = ReceivedItem(server_id=server_id, slot=slot, item_id=item_id, location_id=location_id)
+        received_item = ReceivedItem(server_id=server_id, slot=slot, game_name=game_name, item_id=item_id, location_id=location_id)
         session.add(received_item)
         session.commit()
     
@@ -193,17 +197,17 @@ def has_received_item(server_id: int, slot: int, location_id: int) -> bool:
         return True
     return False
 
-def get_item(server_id: int, item_id: int) -> Item:
-    return session.get(Item, {"server_id": server_id, "item_id": item_id})
+def get_item(server_id: int, game_name: str, item_id: int) -> Item:
+    return session.get(Item, {"server_id": server_id, "game_name": game_name, "item_id": item_id})
 
-def get_location(server_id: int, location_id: int) -> Location:
-    return session.get(Location, {"server_id": server_id, "location_id": location_id})
+def get_location(server_id: int, game_name: str, location_id: int) -> Location:
+    return session.get(Location, {"server_id": server_id, "game_name": game_name, "location_id": location_id})
 
 def get_item_by_name(player: Player, item_name: str) -> Item:
     return session.query(Item).filter_by(server_id=player.server_id, game_name=player.game_name, item_name=item_name).first()
 
 def create_bounty(player: Player, item: Item):
-    bounty = Bounty(server_id=player.server_id, slot=player.slot, item_id=item.item_id)
+    bounty = Bounty(server_id=player.server_id, slot=player.slot, item_id=item.item_id, game_name=player.game_name)
     session.add(bounty)
     session.commit()
     

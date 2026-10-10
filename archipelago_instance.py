@@ -176,16 +176,16 @@ class ArchipelagoInstance():
                 
         elif cmd == 'PrintJSON':
             if 'type' in args.keys() and args['type'] == 'ItemSend':
+                finding_player = database.get_player(self.server_id, int(args['item'].player))
                 receiving_player = database.get_player(self.server_id, int(args['receiving']))
-                item = database.get_item(self.server_id, int(args['item'].item))
-                location = database.get_location(self.server_id, int(args['item'].location))
-                database.create_received_item(self.server_id, receiving_player.slot, item.item_id, location.location_id)
+                item = database.get_item(self.server_id, receiving_player.game_name, int(args['item'].item))
+                location = database.get_location(self.server_id, finding_player.game_name, int(args['item'].location))
+                database.create_received_item(self.server_id, receiving_player.slot, receiving_player.game_name, item.item_id, location.location_id)
                 database.commit()
                 
                 if len(item.bounties) > 0:
                     bounty = item.bounties[0]
                     receiving_users = database.get_users_by_player(receiving_player)
-                    finding_player = database.get_player(self.server_id, int(args['item'].player))
                     finding_users = database.get_users_by_player(finding_player)
 
                     finder = ", ".join([f"<@{user.user_id}>" for user in finding_users]) if finding_users else finding_player.archipelago_alias
@@ -248,6 +248,7 @@ class ArchipelagoInstance():
         return self.Version(*(int(piece, 10) for piece in version.split(".")))
     
 class Player():
+    
     """Represents a player in the game."""
     slot: int
     alias: str
