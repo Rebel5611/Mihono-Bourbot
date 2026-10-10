@@ -197,6 +197,9 @@ def has_received_item(server_id: int, slot: int, location_id: int) -> bool:
         return True
     return False
 
+def get_game(server_id: int, game_name: int) -> Game:
+    return session.get(Game, {"server_id": server_id, "game_name": game_name})
+
 def get_item(server_id: int, game_name: str, item_id: int) -> Item:
     return session.get(Item, {"server_id": server_id, "game_name": game_name, "item_id": item_id})
 

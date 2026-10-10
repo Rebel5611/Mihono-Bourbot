@@ -4,6 +4,7 @@ import database
 import discord
 import docker
 import glob
+import io
 import os
 import requests
 import zipfile
@@ -206,7 +207,34 @@ class Archipelago(commands.Cog):
             await interaction.response.send_message(f"The current bounties are:\n{bounties}")
         else:
             await interaction.response.send_message("There are no current bounties!")
-
+            
+    @archipelago.command(name= "get_item_lists", description = "Get the list of item names for your game(s)")
+    async def get_item_lists(self, interaction: Interaction, alias: str | None):
+        await interaction.response.defer(ephemeral=True)
+        server = database.get_server(interaction.guild.id)
+        if alias:
+            players = [database.get_player_by_alias(interaction.guild.id, alias)]
+        else:
+            players = database.get_players_by_user(database.get_user(interaction.guild.id, interaction.user.id))
+        
+        if len(players) == 1:
+            game = database.get_game(server_id=server.server_id, game_name=players[0].game_name)
+            content = "\n".join([item.item_name for item in game.items])
+            outfile = discord.File(io.BytesIO(content.encode('utf-8')), filename=f"{players[0].game_name} Items.txt")
+            await interaction.followup.send("Item list:", file=outfile, ephemeral=True)
+        elif players:
+            zip_buffer = io.BytesIO()
+            with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+                for player in players:
+                    game = database.get_game(server_id=server.server_id, game_name=player.game_name)
+                    content = "\n".join([item.item_name for item in game.items])
+                    zip_file.writestr(f"{player.game_name} Items.txt", content)
+            zip_buffer.seek(0)
+            outfile = discord.File(fp=zip_buffer, filename="Item Lists.zip")
+            await interaction.followup.send("Item lists:", file=outfile, ephemeral=True)
+        else:
+            await interaction.followup.send("No player found. Either your alias is incorrect, or I haven't connected to the server", ephemeral=True)
+            
     @server.command(name="start", description = "Start the Archipelago server")
     async def start(self, interaction: Interaction):
         await interaction.response.defer()
