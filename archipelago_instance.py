@@ -183,16 +183,16 @@ class ArchipelagoInstance():
                 database.create_received_item(self.server_id, receiving_player.slot, receiving_player.game_name, item.item_id, location.location_id)
                 database.commit()
                 
-                if len(item.bounties) > 0:
-                    bounty = item.bounties[0]
-                    receiving_users = database.get_users_by_player(receiving_player)
-                    finding_users = database.get_users_by_player(finding_player)
+                for bounty in item.bounties:
+                    if bounty.slot == receiving_player.slot:
+                        receiving_users = database.get_users_by_player(receiving_player)
+                        finding_users = database.get_users_by_player(finding_player)
 
-                    finder = ", ".join([f"<@{user.user_id}>" for user in finding_users]) if finding_users else finding_player.archipelago_alias
-                    receiver = ", ".join([f"<@{user.user_id}>" for user in receiving_users]) if receiving_users else receiving_player.archipelago_alias
-                    await self.send_message(f"{finder} has found {receiver}'s {bounty.item.item_name} at their {location.location_name}!")
-                    receiving_player.bounties.remove(bounty)
-                    database.commit()
+                        finder = ", ".join([f"<@{user.user_id}>" for user in finding_users]) if finding_users else finding_player.archipelago_alias
+                        receiver = ", ".join([f"<@{user.user_id}>" for user in receiving_users]) if receiving_users else receiving_player.archipelago_alias
+                        await self.send_message(f"{finder} has found {receiver}'s {bounty.item.item_name} at their {location.location_name}!")
+                        receiving_player.bounties.remove(bounty)
+                        database.commit()
 
         elif cmd == 'InvalidPacket':
             print(f"Invalid Packet of {args['type']}: {args['text']}")

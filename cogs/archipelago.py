@@ -204,9 +204,9 @@ class Archipelago(commands.Cog):
             
         bounties = bounties.strip()
         if bounties != '':
-            await interaction.response.send_message(f"The current bounties are:\n{bounties}")
+            await interaction.response.send_message(f"The current bounties are:\n{bounties}", ephemeral=True)
         else:
-            await interaction.response.send_message("There are no current bounties!")
+            await interaction.response.send_message("There are no current bounties!", ephemeral=True)
             
     @archipelago.command(name= "get_item_lists", description = "Get the list of item names for your game(s)")
     async def get_item_lists(self, interaction: Interaction, alias: str | None):
