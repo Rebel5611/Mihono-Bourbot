@@ -126,13 +126,13 @@ class ArchipelagoInstance():
         if cmd == 'RoomInfo':
             payload = {
                 'cmd': 'Connect',
+                'name': 'Mihono Bourbot',
                 'password': database.get_server(self.server_id).archipelago_password, 
-                'spectator': True, 
-                'version': self.tuplize_version("0.5.0"),
+                'version': self.tuplize_version("0.6.8"),
                 'tags': {"AP", "TextOnly"}, 
                 'items_handling': 0b000,
                 'uuid': uuid.getnode(), 
-                'game': "", 
+                'game': "Mihono Bourbot", 
                 "slot_data": False,
             }
             if args['password']:

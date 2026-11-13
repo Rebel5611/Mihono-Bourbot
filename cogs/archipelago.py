@@ -7,6 +7,7 @@ import glob
 import io
 import os
 import requests
+import shutil
 import zipfile
 from websockets.protocol import State
 from discord.ext import commands
@@ -61,7 +62,7 @@ class Archipelago(commands.Cog):
         database.commit()
         await interaction.response.send_message(f"Saved!", ephemeral=True)
 
-    @archipelago.command(name="upload_yamls", description = "Upload yamls to use for generating a new Archipelago game")
+    @archipelago.command(name="upload_yamls", description = "Upload yamls to use when generating a new Archipelago game")
     async def upload_yamls(self, interaction: Interaction, attachment: discord.Attachment):
         name, extension = os.path.splitext(attachment.filename)
         if extension.lower() == ".zip":
@@ -86,46 +87,83 @@ class Archipelago(commands.Cog):
             await interaction.response.send_message("File saved!", ephemeral=True)
         else:
             await interaction.response.send_message("Invalid file type! Please upload a .zip file or a single .yaml", ephemeral=True)
+            
+    @archipelago.command(name="upload_apworlds", description = "Upload custom apworlds to use when generating a new Archipelago game")
+    async def upload_apworlds(self, interaction: Interaction, attachment: discord.Attachment):
+        name, extension = os.path.splitext(attachment.filename)
+        if extension.lower() == ".zip":
+            files = glob.glob(f"/server/archipelago/{interaction.guild.id}/Worlds/*")
+            for f in files:
+                os.remove(f)
+    
+            await attachment.save(fp=attachment.filename)
+
+            with zipfile.ZipFile(attachment.filename, 'r') as zip_ref:
+                zip_ref.extractall(f"/server/archipelago/{interaction.guild.id}/Worlds/")
+                
+            os.remove(attachment.filename)
+            await interaction.response.send_message("Files saved!", ephemeral=True)
+        elif extension.lower() == ".apworld":
+            files = glob.glob(f"/server/archipelago/{interaction.guild.id}/Worlds/*")
+            for f in files:
+                os.remove(f)
+
+            os.makedirs(f"/server/archipelago/{interaction.guild.id}/Worlds/", exist_ok=True)
+            await attachment.save(fp=f"/server/archipelago/{interaction.guild.id}/Worlds/" + attachment.filename)
+            await interaction.response.send_message("File saved!", ephemeral=True)
+        else:
+            await interaction.response.send_message("Invalid file type! Please upload a .zip file or a single .apworld", ephemeral=True)
 
     @archipelago.command(name="generate_game", description = "Generate a new Archipelago game")
     async def generate_game(self, interaction: Interaction):
         await interaction.response.defer()
-        files = glob.glob(f"/server/archipelago/{interaction.guild.id}/output/*")
-        for f in files:
-            os.remove(f)
-        
-        try:
-            prev_container = self.docker_client.containers.get(f"archipelago-generate-{interaction.guild.id}")
-            prev_container.remove(force=True)
-        except docker.errors.NotFound:
-            print("No old container found, proceeding...")
-        except Exception as e:
-            print(f"An unexpected error occurred: {e}")
-        
-        
-        result = await asyncio.to_thread(self.generate_multiworld, interaction.guild.id)
-        
-        if result['StatusCode'] == 0:
-            output_filepath = glob.glob(f"/server/archipelago/{interaction.guild.id}/output/*")[0]
-    
-            await interaction.followup.send("Multiworld generated", file=discord.File(output_filepath))
-            
-            with zipfile.ZipFile(output_filepath, 'r') as zip_ref:
-                zip_ref.extractall(f"/server/archipelago/{interaction.guild.id}/output/")
-            files = glob.glob(f"/server/archipelago/{interaction.guild.id}/output/*")
-            for f in files:
-                name, extension = os.path.splitext(f)
-                if extension.lower() == ".archipelago":
-                    os.rename(f, f"/server/archipelago/{interaction.guild.id}/output/server.archipelago")
-                else:
-                    os.remove(f)
-                    
-            server = database.get_server(interaction.guild.id)
-            server.players.clear()
-            server.games.clear()
-            database.commit()
+        if interaction.guild.id in self.archipelago_instances and (instance := self.archipelago_instances[interaction.guild.id]) and instance.check_server_status():
+            await interaction.followup.send("There is a running server. Please stop the server before generating a new game.")
         else:
-            await interaction.followup.send("Multiworld generation failed")
+            server_path = f"/server/archipelago/{interaction.guild.id}"
+            files = glob.glob(f"{server_path}/output/*")
+            for f in files:
+                os.remove(f)
+            
+            
+            os.makedirs(f"{server_path}/Players/", exist_ok=True)
+            os.makedirs(f"{server_path}/Worlds/", exist_ok=True)
+            shutil.copy2("/server/apworld/Mihono Bourbot.yaml", f"{server_path}/Players/")
+            temp = shutil.make_archive(base_name=f"{server_path}/Worlds/mihonobourbot", format='zip', root_dir="/server/apworld", base_dir="mihonobourbot")
+            os.rename(temp, f"{server_path}/Worlds/mihonobourbot.apworld")
+            
+            try:
+                prev_container = self.docker_client.containers.get(f"archipelago-generate-{interaction.guild.id}")
+                prev_container.remove(force=True)
+            except docker.errors.NotFound:
+                print("No old container found, proceeding...")
+            except Exception as e:
+                print(f"An unexpected error occurred: {e}")
+            
+            
+            result = await asyncio.to_thread(self.generate_multiworld, interaction.guild.id)
+            
+            if result['StatusCode'] == 0:
+                output_filepath = glob.glob(f"{server_path}/output/*")[0]
+        
+                await interaction.followup.send("Multiworld generated", file=discord.File(output_filepath))
+                
+                with zipfile.ZipFile(output_filepath, 'r') as zip_ref:
+                    zip_ref.extractall(f"{server_path}/output/")
+                files = glob.glob(f"{server_path}/output/*")
+                for f in files:
+                    name, extension = os.path.splitext(f)
+                    if extension.lower() == ".archipelago":
+                        os.rename(f, f"{server_path}/output/server.archipelago")
+                    else:
+                        os.remove(f)
+                        
+                server = database.get_server(interaction.guild.id)
+                server.players.clear()
+                server.games.clear()
+                database.commit()
+            else:
+                await interaction.followup.send("Multiworld generation failed")
 
     @bounty_board.command(name= "add_bounty", description = "Add a bounty for one of your Archipelago items")
     async def add_bounty(self, interaction: Interaction, item_name: str, alias: str | None):
@@ -266,9 +304,8 @@ class Archipelago(commands.Cog):
     @server.command(name="stop", description = "Stop the Archipelago server")
     async def stop(self, interaction: Interaction):
         await interaction.response.defer()
-        
-        instance = self.archipelago_instances[interaction.guild.id]
-        if not instance or not instance.check_server_status():
+         
+        if not interaction.guild.id in self.archipelago_instances or not (instance := self.archipelago_instances[interaction.guild.id]) or not instance.check_server_status():
             await interaction.followup.send("There is no running server")
         else:
             instance.disconnected_intentionally = True
@@ -285,7 +322,7 @@ class Archipelago(commands.Cog):
 
     def generate_multiworld(self, server_id: int):
         self.docker_client.images.build(path="/server/archipelago/", dockerfile="Generate", tag="archipelago-generate", rm=True)
-        return self.docker_client.containers.run("archipelago-generate", name=f"archipelago-generate-{server_id}", remove=True, detach=True, volumes=[f"/home/rebel5611/mihono_bourbot/serverdata/archipelago/{server_id}/output:/server/output", f"/home/rebel5611/mihono_bourbot/serverdata/archipelago/{server_id}/Players:/server/Players"]).wait()
+        return self.docker_client.containers.run("archipelago-generate", name=f"archipelago-generate-{server_id}", remove=True, detach=True, volumes=[f"/home/rebel5611/mihono_bourbot/serverdata/archipelago/{server_id}/output:/server/output", f"/home/rebel5611/mihono_bourbot/serverdata/archipelago/{server_id}/Players:/server/Players", f"/home/rebel5611/mihono_bourbot/serverdata/archipelago/{server_id}/Worlds:/server/custom_worlds"]).wait()
 
 async def setup(client):
     await client.add_cog(Archipelago(client))
