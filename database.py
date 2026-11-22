@@ -223,17 +223,33 @@ def set_game_items_and_locations(server_id: int, game_name: str, items: dict[str
         server = session.get(Server, {"server_id": server_id})
         game = Game(server_id=server_id, game_name=game_name)
         server.games.append(game)
-    game.items.clear()
-    game.locations.clear()
-    session.commit()
+        
+    session.execute(
+        delete(Item).where(
+            Item.server_id == server_id,
+            Item.game_name == game_name
+        )
+    )
+    session.execute(
+        delete(Location).where(
+            Location.server_id == server_id,
+            Location.game_name == game_name
+        )
+    )
     
-    for name, id in items.items():
-        item = Item(server_id=game.server_id, game_name=game.game_name, item_id=id, item_name=name)
-        game.items.append(item)
+    if items:
+        session.execute(
+            insert(Item),
+            [{"server_id": server_id, "game_name": game_name, "item_id": id, "item_name": name} for name, id in items.items()]
+        )
 
-    for name, id in locations.items():
-        location = Location(server_id=game.server_id, game_name=game.game_name, location_id=id, location_name=name)
-        game.locations.append(location)
+    if locations:
+        session.execute(
+            insert(Location),
+            [{"server_id": server_id, "game_name": game_name, "location_id": id, "location_name": name} for name, id in locations.items()]
+        )
+        
+    session.expire(game, ['locations', 'items'])
     session.commit()
         
 def commit():

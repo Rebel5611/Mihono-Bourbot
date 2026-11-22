@@ -58,7 +58,7 @@ class Archipelago(commands.Cog):
     @archipelago.command(name="set_aliases", description = "Set your Archipelago aliases as a comma seperated list")
     async def set_aliases(self, interaction: Interaction, aliases: str):
         user = database.get_user(interaction.guild.id, interaction.user.id)
-        user.aliases = [alias for raw_alias in aliases.split(',') if (alias := raw_alias.strip())]
+        user.aliases = set([alias for raw_alias in aliases.split(',') if (alias := raw_alias.strip())])
         database.commit()
         await interaction.response.send_message(f"Saved!", ephemeral=True)
 
@@ -116,10 +116,10 @@ class Archipelago(commands.Cog):
 
     @archipelago.command(name="generate_game", description = "Generate a new Archipelago game")
     async def generate_game(self, interaction: Interaction):
-        await interaction.response.defer()
         if interaction.guild.id in self.archipelago_instances and (instance := self.archipelago_instances[interaction.guild.id]) and instance.check_server_status():
-            await interaction.followup.send("There is a running server. Please stop the server before generating a new game.")
+            await interaction.response.send_message("There is a running server. Please stop the server before generating a new game.", ephemeral=True)
         else:
+            await interaction.response.send_message("Generating game...")
             server_path = f"/server/archipelago/{interaction.guild.id}"
             files = glob.glob(f"{server_path}/output/*")
             for f in files:
@@ -146,7 +146,7 @@ class Archipelago(commands.Cog):
             if result['StatusCode'] == 0:
                 output_filepath = glob.glob(f"{server_path}/output/*")[0]
         
-                await interaction.followup.send("Multiworld generated", file=discord.File(output_filepath))
+                await interaction.channel.send("Multiworld generated", file=discord.File(output_filepath))
                 
                 with zipfile.ZipFile(output_filepath, 'r') as zip_ref:
                     zip_ref.extractall(f"{server_path}/output/")
@@ -163,7 +163,7 @@ class Archipelago(commands.Cog):
                 server.games.clear()
                 database.commit()
             else:
-                await interaction.followup.send("Multiworld generation failed")
+                await interaction.channel.send("Multiworld generation failed")
 
     @bounty_board.command(name= "add_bounty", description = "Add a bounty for one of your Archipelago items")
     async def add_bounty(self, interaction: Interaction, item_name: str, alias: str | None):
