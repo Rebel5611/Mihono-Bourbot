@@ -59,7 +59,9 @@ class ArchipelagoInstance():
             print(f"An unexpected error occurred: {e}")
 
         self.docker_client.images.build(path="/server/archipelago/", dockerfile="Run", tag="archipelago-run", rm=True)
-        self.server = self.docker_client.containers.run("archipelago-run", name=f"archipelago-run-{self.server_id}", stdin_open=True, tty=True, remove=True, detach=True, ports={'38281/tcp': self.port}, volumes=[f"/home/rebel5611/mihono_bourbot/serverdata/archipelago/{self.server_id}/output:/server/output"], network="archipelago")
+        self.server = self.docker_client.containers.run("archipelago-run", name=f"archipelago-run-{self.server_id}", stdin_open=True, tty=False, remove=True, detach=True, ports={'38281/tcp': self.port}, volumes=[f"/home/rebel5611/mihono_bourbot/serverdata/archipelago/{self.server_id}/output:/server/output"], network="archipelago")
+        self.disconnected_intentionally = False
+        self.reconnect_delay = self.default_reconnect_delay
         self.archipelago_client = asyncio.create_task(self.connect_to_multiworld(f"ws://archipelago-run-{self.server_id}:38281"), name="archipelago client")
     
     def check_server_status(self):

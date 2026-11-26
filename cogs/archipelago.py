@@ -10,6 +10,7 @@ import requests
 import shutil
 import zipfile
 from websockets.protocol import State
+from requests.exceptions import ReadTimeout, ConnectionError
 from discord.ext import commands
 from discord import app_commands, Interaction
 
@@ -297,7 +298,7 @@ class Archipelago(commands.Cog):
                 return
             else:
                 self.archipelago_instances[interaction.guild.id] = ArchipelagoInstance(server_id=interaction.guild.id, discord_client=self.client, port=port, docker_client=self.docker_client)
-        
+
         self.archipelago_instances[interaction.guild.id].start_server()
         await interaction.followup.send("Server started")
             
@@ -316,8 +317,20 @@ class Archipelago(commands.Cog):
                 await instance.socket.close()
             if instance.archipelago_client:
                 await instance.archipelago_client
-                
-            instance.server.stop()
+
+            socket = instance.server.attach_socket(params={'stdin': 1, 'stream': 1})
+            socket._sock.sendall(b"/exit\n")
+            socket.close()
+            
+            try:
+                instance.server.wait(timeout=5)
+            except (ReadTimeout, ConnectionError):
+                try:
+                    instance.server.stop(timeout=2)
+                except docker.errors.NotFound:
+                    pass
+            except docker.errors.NotFound:
+                pass
             await interaction.followup.send("Server stopped")  
 
     def generate_multiworld(self, server_id: int):
