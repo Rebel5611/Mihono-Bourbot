@@ -139,6 +139,8 @@ class Bounty(base):
     slot: Mapped[int] = mapped_column(Integer, primary_key=True)
     item_id: Mapped[int] = mapped_column(Integer, primary_key=True)
     game_name: Mapped[str] = mapped_column(String)
+    quantity: Mapped[int] = mapped_column(Integer)
+    notify_on_each: Mapped[bool] = mapped_column(Boolean)
     
     __table_args__ = (
         ForeignKeyConstraint(["server_id", "slot"], ["player.server_id", "player.slot"], ondelete="CASCADE"),
@@ -209,8 +211,8 @@ def get_location(server_id: int, game_name: str, location_id: int) -> Location:
 def get_item_by_name(player: Player, item_name: str) -> Item:
     return session.query(Item).filter_by(server_id=player.server_id, game_name=player.game_name, item_name=item_name).first()
 
-def create_bounty(player: Player, item: Item):
-    bounty = Bounty(server_id=player.server_id, slot=player.slot, item_id=item.item_id, game_name=player.game_name)
+def create_bounty(player: Player, item: Item, quantity: int=1, notify_on_each: bool=True):
+    bounty = Bounty(server_id=player.server_id, slot=player.slot, item_id=item.item_id, game_name=player.game_name, quantity=quantity, notify_on_each=notify_on_each)
     session.add(bounty)
     session.commit()
     

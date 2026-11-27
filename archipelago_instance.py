@@ -184,7 +184,8 @@ class ArchipelagoInstance():
                 location = database.get_location(self.server_id, finding_player.game_name, int(args['item'].location))
                 database.create_received_item(self.server_id, receiving_player.slot, receiving_player.game_name, item.item_id, location.location_id)
                 database.commit()
-                
+
+                bounties_found = ""
                 for bounty in item.bounties:
                     if bounty.slot == receiving_player.slot:
                         receiving_users = database.get_users_by_player(receiving_player)
@@ -192,9 +193,13 @@ class ArchipelagoInstance():
 
                         finder = ", ".join([f"<@{user.user_id}>" for user in finding_users]) if finding_users else finding_player.archipelago_alias
                         receiver = ", ".join([f"<@{user.user_id}>" for user in receiving_users]) if receiving_users else receiving_player.archipelago_alias
-                        await self.send_message(f"{finder} has found {receiver}'s {bounty.item.item_name} at their {location.location_name}!")
-                        receiving_player.bounties.remove(bounty)
+                        bounty.quantity -= 1
+                        if bounty.notify_on_each or bounty.quantity == 0:
+                            bounties_found += f"{finder} has found {receiver}'s {bounty.item.item_name} at their {location.location_name}!\n"
+                            if bounty.quantity == 0:
+                                receiving_player.bounties.remove(bounty)
                         database.commit()
+                await self.send_message(bounties_found.strip())
 
         elif cmd == 'InvalidPacket':
             print(f"Invalid Packet of {args['type']}: {args['text']}")
