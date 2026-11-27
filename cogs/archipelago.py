@@ -184,14 +184,14 @@ class Archipelago(commands.Cog):
                 await interaction.channel.send("Multiworld generation failed")
 
     @bounty_board.command(name= "add_bounty", description = "Add a bounty for one of your Archipelago items")
-    async def add_bounty(self, interaction: Interaction, item_name: str, alias: str | None, quantity: int=1, notify_on_each: bool=True):
+    async def add_bounty(self, interaction: Interaction, item_name: str, alias: str | None, quantity: int=1, notify_on_each: bool=True, count_previous: bool=False):
         if alias:
             players = [database.get_player_by_alias(interaction.guild.id, alias)]
         else:
             players = database.get_players_by_user(database.get_user(interaction.guild.id, interaction.user.id))
         
         if players:
-            result = self._add_bounty(item_name, players, quantity=quantity, notify_on_each=notify_on_each)
+            result = self._add_bounty(item_name, players, quantity=quantity, notify_on_each=notify_on_each, count_previous=count_previous)
             await interaction.response.send_message(result[0].strip(), ephemeral=result[1])
         else:
             await interaction.response.send_message("No player found. Either your alias is incorrect, or I haven't connected to the server", ephemeral=True)
@@ -216,7 +216,7 @@ class Archipelago(commands.Cog):
         else:
             await interaction.response.send_message("No player found. Either your aliases are incorrect, or I haven't connected to the server", ephemeral=True)
 
-    def _add_bounty(self, item_name: str, players: list[database.Player], quantity: int=1, notify_on_each: bool=True) -> tuple[str, bool]:
+    def _add_bounty(self, item_name: str, players: list[database.Player], quantity: int=1, notify_on_each: bool=True, count_previous: bool=False) -> tuple[str, bool]:
         player_items = []
         for player in players:
             if (item := database.get_item_by_name(player, item_name)):
@@ -229,6 +229,11 @@ class Archipelago(commands.Cog):
         else:
             player_item = player_items[0]
             if database.get_bounty(player_item[0], player_item[1]) is None:
+                if count_previous:
+                    for received_item in player_item[1].received_items:
+                        if received_item.slot == player_item[0].slot:
+                            quantity -= 1
+
                 database.create_bounty(player_item[0], player_item[1], quantity, notify_on_each)
                 database.commit()
                 users = database.get_users_by_player(player_item[0])
