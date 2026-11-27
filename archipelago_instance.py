@@ -195,7 +195,7 @@ class ArchipelagoInstance():
                         receiver = ", ".join([f"<@{user.user_id}>" for user in receiving_users]) if receiving_users else receiving_player.archipelago_alias
                         bounty.quantity -= 1
                         if bounty.notify_on_each or bounty.quantity == 0:
-                            bounties_found += f"{finder} has found {receiver}'s {bounty.item.item_name} at their {location.location_name}!\n"
+                            bounties_found += f"{finder} has found {receiver}'s {bounty.item.item_name} at their {location.location_name}!{f" {bounty.quantity} remain{"s" if bounty.quantity == 1 else ""}." if bounty.quantity > 0 else ""}\n"
                             if bounty.quantity == 0:
                                 receiving_player.bounties.remove(bounty)
                         database.commit()
