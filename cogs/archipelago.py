@@ -55,11 +55,28 @@ class Archipelago(commands.Cog):
             await interaction.response.send_message(f"Saved {archipelago_password} as the server's password", ephemeral=True)
         else:
             await interaction.response.send_message("You do not have permission to run this command!", ephemeral=True)
-    
+
     @archipelago.command(name="set_aliases", description = "Set your Archipelago aliases as a comma seperated list")
     async def set_aliases(self, interaction: Interaction, aliases: str):
         user = database.get_user(interaction.guild.id, interaction.user.id)
         user.aliases = set([alias for raw_alias in aliases.split(',') if (alias := raw_alias.strip())])
+        database.commit()
+        await interaction.response.send_message(f"Saved!", ephemeral=True)
+
+    @archipelago.command(name="add_aliases", description = "Add to your current Archipelago aliases with a comma seperated list")
+    async def add_aliases(self, interaction: Interaction, aliases: str):
+        user = database.get_user(interaction.guild.id, interaction.user.id)
+        user.aliases.extend(set([alias for raw_alias in aliases.split(',') if (alias := raw_alias.strip())]))
+        user.aliases = set(user.aliases)
+        database.commit()
+        await interaction.response.send_message(f"Saved!", ephemeral=True)
+
+    @archipelago.command(name="remove_aliases", description = "Remove Archipelago aliases with a comma seperated list")
+    async def remove_aliases(self, interaction: Interaction, aliases: str):
+        user = database.get_user(interaction.guild.id, interaction.user.id)
+        for alias in set([alias for raw_alias in aliases.split(',') if (alias := raw_alias.strip())]):
+            if alias in user.aliases:
+                user.aliases.remove(alias)
         database.commit()
         await interaction.response.send_message(f"Saved!", ephemeral=True)
 
