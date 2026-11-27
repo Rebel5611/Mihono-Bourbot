@@ -280,17 +280,7 @@ class Player():
     class Encoder(json.JSONEncoder):
         def default(self, o):
             if isinstance(o, Player):
-                return {
-                    "_type": "Player",
-                    "slot": o.slot,
-                    "alias": o.alias,
-                    "name": o.name,
-                    "game": o.game,
-                    "team": o.team,
-                    "mention": o.mention,
-                    "received_items": o.received_items,
-                    "bounties": o.bounties
-                }
+                return { "_type": "Player" } | vars(o)
             return super(Player.Encoder, self).default(o)
     
     class Decoder(json.JSONDecoder):
@@ -298,9 +288,8 @@ class Player():
             json.JSONDecoder.__init__(self, object_hook=self.object_hook, *args, **kwargs)
 
         def object_hook(self, o):
-            if "_type" in o:
-                if o["_type"] == "Player":
-                    return Player(slot=o["slot"], alias=o["alias"], name=o["name"], game=o["game"], team=o["team"], mention=o["mention"], received_items=o["received_items"], bounties=o["bounties"])
+            if o.get("_type") == "Player":
+                return Player(**{k: o[k] for k in o if k != "_type"})
             return o
         
 class ByValue:
