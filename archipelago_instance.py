@@ -199,7 +199,8 @@ class ArchipelagoInstance():
                             if bounty.quantity == 0:
                                 receiving_player.bounties.remove(bounty)
                         database.commit()
-                await self.send_message(bounties_found.strip())
+                if bounties_found := bounties_found.strip():
+                    await self.send_message(bounties_found.strip())
 
         elif cmd == 'InvalidPacket':
             print(f"Invalid Packet of {args['type']}: {args['text']}")
